@@ -16,7 +16,7 @@
  * along with this program; if not, write to the Free Software
  * Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA  02111-1307, USA.
  *
- * Author: Erik Türke, tuerke@cbs.mpg.de
+ * Author: Erik Tuerke, tuerke@cbs.mpg.de
  *
  * vastPlugin_Histogram.cpp
  *
@@ -56,14 +56,15 @@ public:
 			histogramDialog = new HistogramDialog( parentWidget, viewerCore );
 			isInitialized = true;
 		}
-        if( viewerCore->hasImage() ) {
-            histogramDialog->show();
-        }else {
-            QMessageBox msg(parentWidget);
-            msg.setText("No image has been loaded or selected!");
-            msg.exec();
-        }
-        
+
+		if( viewerCore->hasImage() ) {
+			histogramDialog->show();
+		} else {
+			QMessageBox msg( parentWidget );
+			msg.setText( "No image has been loaded or selected!" );
+			msg.exec();
+		}
+
 		return true;
 	};
 

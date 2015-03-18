@@ -9,19 +9,26 @@ PROJECT(vast)
 # set install infix for plugin installation path
 ############################################################
 set(VAST_PLUGIN_INFIX lib/vast/plugins)
+set(VAST_WIDGET_INFIX lib/vast/widgets)
 set(VAST_DOC_INFIX share/vast/doc/html)
 
 include_directories(widgets)
 
+option(HAVE_WEBKIT "Set to off if you dont have QtWebKit (will disable help)" ON)
+
 # collecting files
 file (GLOB VIEWER_FILES_CPP  viewer/*.cpp)
 file (GLOB WIDGET_FILES_CPP widgets/*.cpp )
-file (GLOB QWIDGET_FILES_CPP QImageWidget/*.cpp )
 file (GLOB UI_FILES forms/*.ui)
 file (GLOB RESOURCE_FILES resources/*.qrc)
 file (GLOB INTERNAL_FILES_CPP viewer/internal/*.cpp )
 file (GLOB VIEWER_DEV_FILES viewer/*.hpp )
 file (GLOB WIDGET_DEV_FILES widgets/*.hpp )
+
+if(NOT HAVE_WEBKIT)
+	list(REMOVE_ITEM WIDGET_FILES_CPP ${CMAKE_SOURCE_DIR}/widgets/helpdialog.cpp)
+	list(REMOVE_ITEM WIDGET_DEV_FILES ${CMAKE_SOURCE_DIR}/widgets/helpdialog.hpp)
+endif(NOT HAVE_WEBKIT)
 
 set(VIEWER_FILES_HPP
 	viewer/qviewercore.hpp
@@ -36,36 +43,41 @@ set(VIEWER_FILES_HPP
 	widgets/filedialog.hpp
 	widgets/startwidget.hpp
 	widgets/keycommandsdialog.hpp
-	widgets/helpdialog.hpp
 	widgets/aboutDialog.hpp
 )
 
-set(WIDGET_FILES_HPP
-	QImageWidget/QImageWidgetImplementation.hpp)
+if(HAVE_WEBKIT)
+	set(VIEWER_FILES_HPP ${VIEWER_FILES_HPP} widgets/helpdialog.hpp)
+endif(HAVE_WEBKIT)
 
 ##########################################################
 # set viewer version number
 ##########################################################
 set(VAST_VERSION_MAJOR "0")
-set(VAST_VERSION_MINOR "3")
-set(VAST_VERSION_PATCH "0")
+set(VAST_VERSION_MINOR "7")
+set(VAST_VERSION_PATCH "3")
 
 add_definitions(-D_VAST_VERSION_MAJOR=${VAST_VERSION_MAJOR})
 add_definitions(-D_VAST_VERSION_MINOR=${VAST_VERSION_MINOR})
 add_definitions(-D_VAST_VERSION_PATCH=${VAST_VERSION_PATCH})
 
+if(HAVE_WEBKIT)
+add_definitions(-DHAVE_WEBKIT)
+endif(HAVE_WEBKIT)
 
 ###########################################################
 # documentation
 ###########################################################
-option(VAST_DOCUMENTATION "Build the documentation for vast" OFF)
+if(HAVE_WEBKIT)
+option(${CMAKE_PROJECT_NAME}_DOCUMENTATION "Build the documentation for vast" OFF)
 
-IF(VAST_DOCUMENTATION)
+IF(${CMAKE_PROJECT_NAME}_DOCUMENTATION)
 	add_subdirectory(documentation)	
-ENDIF(VAST_DOCUMENTATION)
+ENDIF(${CMAKE_PROJECT_NAME}_DOCUMENTATION)
 
 set_source_files_properties( "${CMAKE_CURRENT_SOURCE_DIR}/widgets/helpdialog.cpp" PROPERTIES COMPILE_FLAGS
 		"-DVAST_DOC_PATH=\\\"${CMAKE_INSTALL_PREFIX}/${VAST_DOC_INFIX}\\\"")
+endif(HAVE_WEBKIT)
 
 ###########################################################
 # isis stuff
@@ -74,31 +86,31 @@ SET(ISIS_DIR /usr/share/isis/cmake CACHE PATH
     "The directory where the isis cmake configuration script is located.")
 find_package(ISIS REQUIRED)
 
-option(VAST_RUNTIME_LOG "Toggles the vast runtime logging" ON)
-option(VAST_DEBUG_LOG "Toggles the vast debug logging" OFF)
-option(VAST_ENABLE_DEV "Toggles vast development logging" ON)
+option(${CMAKE_PROJECT_NAME}_RUNTIME_LOG "Toggles the vast runtime logging" ON)
+option(${CMAKE_PROJECT_NAME}_DEBUG_LOG "Toggles the vast debug logging" OFF)
+option(${CMAKE_PROJECT_NAME}_ENABLE_DEV "Toggles vast development logging" ON)
 
 # we use the log definitions of the core
-IF(VAST_RUNTIME_LOG)
+IF(${CMAKE_PROJECT_NAME}_RUNTIME_LOG)
 	ADD_DEFINITIONS(-D_ENABLE_LOG=1)
-ELSE(VAST_RUNTIME_LOG)
+ELSE(${CMAKE_PROJECT_NAME}_RUNTIME_LOG)
 	ADD_DEFINITIONS(-D_ENABLE_LOG=0)
-ENDIF(VAST_RUNTIME_LOG)
+ENDIF(${CMAKE_PROJECT_NAME}_RUNTIME_LOG)
 
 # enable DEBUG_LOG
-IF(VAST_DEBUG_LOG)
+IF(${CMAKE_PROJECT_NAME}_DEBUG_LOG)
 	ADD_DEFINITIONS(-D_ENABLE_DEBUG=1)
 	MESSAGE(STATUS "Debug code enabled, this will will have a big impact on the performance")
-ELSE(VAST_DEBUG_LOG)
+ELSE(${CMAKE_PROJECT_NAME}_DEBUG_LOG)
 	ADD_DEFINITIONS(-D_ENABLE_DEBUG=0)
-ENDIF(VAST_DEBUG_LOG)
+ENDIF(${CMAKE_PROJECT_NAME}_DEBUG_LOG)
 
-IF(VAST_ENABLE_DEV)
+IF(${CMAKE_PROJECT_NAME}_ENABLE_DEV)
 	add_definitions(-D_ENABLE_DEV=1)
-else(VAST_ENABLE_DEV)
+else(${CMAKE_PROJECT_NAME}_ENABLE_DEV)
 	add_definitions(-D_ENABLE_DEV=0)
 	message(WARNING "vast development logging was turned off. Creating of log will not be possible!")
-endif(VAST_ENABLE_DEV)
+endif(${CMAKE_PROJECT_NAME}_ENABLE_DEV)
 
 include_directories(${CMAKE_CURRENT_BINARY_DIR} ${ISIS_INCLUDE_DIRS})
 
@@ -106,34 +118,34 @@ include_directories(${CMAKE_CURRENT_BINARY_DIR} ${ISIS_INCLUDE_DIRS})
 # qt4 stuff
 ###########################################################
 
+if(HAVE_WEBKIT)
 FIND_PACKAGE(Qt4 COMPONENTS QtCore QtGui QtWebKit REQUIRED)
+else(HAVE_WEBKIT)
+FIND_PACKAGE(Qt4 COMPONENTS QtCore QtGui REQUIRED)
+endif(HAVE_WEBKIT)
 
 set(QT_USE_QTUITOOLS TRUE)
-set(QT_USE_QTOPENGL TRUE)
-set(QT_USE_OPENGL TRUE )
 
 INCLUDE(${QT_USE_FILE})
 
 QT4_ADD_RESOURCES(vast_rcc_files ${RESOURCE_FILES})
 
-qt4_wrap_cpp(vast_moc_files ${VIEWER_FILES_HPP} ${WIDGET_FILES_HPP})
+qt4_wrap_cpp(vast_moc_files ${VIEWER_FILES_HPP}  OPTIONS -DBOOST_TT_HAS_OPERATOR_HPP_INCLUDED)
 QT4_WRAP_UI(vast_UIS_H ${UI_FILES})
 
-#for some reasons this is necessary on lenny 64 bit distributions
-find_library(QT4_WEBKIT_LIB QtWebKit)
 
 ###########################################################
 # boost and common stuff
 ###########################################################
 
-FIND_PACKAGE(Boost REQUIRED)
+FIND_PACKAGE(Boost REQUIRED COMPONENTS thread)
 
 INCLUDE_DIRECTORIES(${Boost_INCLUDE_DIR})
 include_directories(${CMAKE_CURRENT_SOURCE_DIR}/QImageWidget)
 include_directories(${CMAKE_CURRENT_SOURCE_DIR}/viewer)
 
 SET(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -ftemplate-depth-100 -Wextra -Wall -Wfatal-errors"  )
-SET(CMAKE_C_FLAGS "${CMAKE_C_FLAGS}  -Wextra -Wall -Wfatal-errors -Wall" )
+SET(CMAKE_C_FLAGS "${CMAKE_C_FLAGS}  -Wextra -Wall -Wfatal-errors" )
 
 
 ############################################################
@@ -171,9 +183,10 @@ set_source_files_properties( "viewer/pluginloader.cpp" PROPERTIES COMPILE_FLAGS
 	"-D_VAST_PLUGIN_PATH=\\\"${CMAKE_INSTALL_PREFIX}/${VAST_PLUGIN_INFIX}\\\" -DDL_SUFFIX=\\\"${CMAKE_SHARED_LIBRARY_SUFFIX}\\\" -DDL_PREFIX=\\\"${CMAKE_SHARED_LIBRARY_PREFIX}\\\""
 )
 
-############################################################
-# set the documentation path
-############################################################
+set_source_files_properties( "viewer/widgetloader.cpp" PROPERTIES COMPILE_FLAGS
+	"-D_VAST_WIDGET_PATH=\\\"${CMAKE_INSTALL_PREFIX}/${VAST_WIDGET_INFIX}\\\" -DDL_SUFFIX=\\\"${CMAKE_SHARED_LIBRARY_SUFFIX}\\\" -DDL_PREFIX=\\\"${CMAKE_SHARED_LIBRARY_PREFIX}\\\""
+)
+
 
 ###########################################################
 # CPack config
@@ -192,23 +205,16 @@ SET(CPACK_PACKAGE_FILE_NAME ${CPACK_PACKAGE_NAME}-${CPACK_PACKAGE_VERSION_MAJOR}
 INCLUDE(CPack)
 
 ###########################################################
-# OPenMP config
+# Build stuff
 ###########################################################
-option(VAST_OPENMP "Toggles the omp support for vast." OFF)
 
-IF(VAST_OPENMP)
-	SET(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -fopenmp ")
-	SET(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -fopenmp ")
-ENDIF(VAST_OPENMP)
-
-add_executable(vast main.cpp ${QWIDGET_FILES_CPP} ${WIDGET_FILES_CPP} ${VIEWER_FILES_CPP} ${WIDGET_FILES_CPP} ${vast_UIS_H} ${vast_moc_files} ${vast_rcc_files} ${INTERNAL_FILES_CPP})
+add_executable(vast main.cpp ${VIEWER_FILES_CPP} ${WIDGET_FILES_CPP} ${vast_UIS_H} ${vast_moc_files} ${vast_rcc_files} ${INTERNAL_FILES_CPP})
 find_library(isisqt4_LIBRARY "isisAdapter_qt4")
 
 message(STATUS "QT libraries: ${QT_LIBRARIES} ")
 
 set(NEEDED_LIBS
 	${QT_LIBRARIES}
-	${QT4_WEBKIT_LIB}
 	${Boost_LIBRARIES}
 	${ISIS_LIB}
 	${ISIS_LIB_DEPENDS}
@@ -218,17 +224,16 @@ set(NEEDED_LIBS
 #add the plugin directory
 add_subdirectory(plugins)
 
-target_link_libraries(vast ${NEEDED_LIBS})
+#add the view_widgets directory
+add_subdirectory(view_widgets)
+
+target_link_libraries(vast ${NEEDED_LIBS} ${CMAKE_DL_LIBS})
 
 install(TARGETS vast RUNTIME DESTINATION ${CMAKE_INSTALL_PREFIX}/bin )
 
-# install header files
-# install(FILES ${VIEWER_DEV_FILES} DESTINATION ${CMAKE_INSTALL_PREFIX}/include/vast COMPONENT Development)
-
-#install(FILES ${WIDGET_DEV_FILES} DESTINATION ${CMAKE_INSTALL_PREFIX}/include/vast COMPONENT Development)
-
 #install pixmap
 install(FILES ${CMAKE_CURRENT_SOURCE_DIR}/resources/vast.xpm DESTINATION ${CMAKE_INSTALL_PREFIX}/share/pixmaps)
+install(FILES ${CMAKE_CURRENT_SOURCE_DIR}/resources/vast.png DESTINATION ${CMAKE_INSTALL_PREFIX}/share/pixmaps)
 
 # uninstall target
 configure_file("${CMAKE_CURRENT_SOURCE_DIR}/cmake//cmake_uninstall.cmake.in" "${CMAKE_CURRENT_BINARY_DIR}/cmake_uninstall.cmake" IMMEDIATE @ONLY)

@@ -30,23 +30,18 @@
 
 #include <QMainWindow>
 #include "ui_mainwindow.h"
-#include "qviewercore.hpp"
-#include "preferenceDialog.hpp"
-#include "nativeimageops.hpp"
+#include "../viewer/qviewercore.hpp"
+
+
 #include <CoreUtils/progressfeedback.hpp>
-#include "scalingWidget.hpp"
-#include "loggingDialog.hpp"
-#include "filedialog.hpp"
-#include "startwidget.hpp"
-#include "keycommandsdialog.hpp"
-#include "aboutDialog.hpp"
-#include "helpdialog.hpp"
+
+
 
 namespace isis
 {
 namespace viewer
 {
-namespace widget
+namespace ui
 {
 class PreferencesDialog;
 class ScalingWidget;
@@ -55,13 +50,20 @@ class FileDialog;
 class StartWidget;
 class KeyCommandsDialog;
 class AboutDialog;
+class HelpDialog;
 
+}
+
+namespace operation
+{
+class NativeImageOps;
 }
 
 class MainWindow : public QMainWindow
 {
 	Q_OBJECT
 public:
+	friend class UICore;
 	MainWindow( QViewerCore *core );
 
 	virtual ~MainWindow() {};
@@ -71,14 +73,14 @@ public:
 
 	void reloadPluginsToGUI( );
 
-	widget::PreferencesDialog *preferencesDialog;
-	widget::LoggingDialog *loggingDialog;
-	widget::FileDialog *fileDialog;
-	widget::StartWidget *startWidget;
-	widget::ScalingWidget *scalingWidget;
-	widget::KeyCommandsDialog *keyCommandsdialog;
-	widget::HelpDialog *helpDialog;
-	widget::AboutDialog *aboutDialog;
+	ui::PreferencesDialog *preferencesDialog;
+	ui::LoggingDialog *loggingDialog;
+	ui::FileDialog *fileDialog;
+	ui::StartWidget *startWidget;
+	ui::ScalingWidget *scalingWidget;
+	ui::KeyCommandsDialog *keyCommandsdialog;
+	ui::HelpDialog *helpDialog;
+	ui::AboutDialog *aboutDialog;
 
 
 public Q_SLOTS:
@@ -96,8 +98,6 @@ public Q_SLOTS:
 	void showLoggingDialog();
 	void refreshUI();
 	void resetScaling();
-	void autoScaling();
-	void toggleZMapMode( bool );
 	void showKeyCommandDialog();
 	void loadSettings();
 	void saveSettings();
@@ -106,12 +106,16 @@ public Q_SLOTS:
 	void toggleAxialView( bool );
 	void toggleCoronalView( bool );
 	void updateRecentOpenList();
-    void openRecentPath( QString );
-	void toggleLoadingIcon( bool start, const QString &text = QString() );
+	void openRecentPath( QString );
+	void toggleGeometrical( bool );
+
+protected:
+	void dropEvent( QDropEvent * );
+
 
 private:
 
-	
+
 	Ui::vastMainWindow m_Interface;
 	QViewerCore *m_ViewerCore;
 
@@ -124,8 +128,8 @@ private:
 	QAction *m_ActionReset_Scaling;
 	QAction *m_ActionAuto_Scaling;
 
-	QLabel * m_StatusMovieLabel;
-	QMovie * m_StatusMovie;
+	QLabel *m_StatusMovieLabel;
+	QMovie *m_StatusMovie;
 
 
 };
@@ -133,9 +137,17 @@ private:
 
 }
 }
-
-
-
+#include "preferenceDialog.hpp"
+#include "scalingWidget.hpp"
+#include "../viewer/nativeimageops.hpp"
+#include "loggingDialog.hpp"
+#include "filedialog.hpp"
+#include "startwidget.hpp"
+#include "keycommandsdialog.hpp"
+#include "aboutDialog.hpp"
+#ifdef HAVE_WEBKIT
+#include "helpdialog.hpp"
+#endif //HAVE_WEBKIT
 
 
 #endif

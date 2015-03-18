@@ -30,13 +30,13 @@
 #include <QDialog>
 
 #include "ui_loggingDialog.h"
-#include "qviewercore.hpp"
+#include "../viewer/qviewercore.hpp"
 
 namespace isis
 {
 namespace viewer
 {
-namespace widget
+namespace ui
 {
 
 class LoggingDialog : public QDialog

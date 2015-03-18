@@ -28,7 +28,7 @@
 #include "keycommandsdialog.hpp"
 
 
-isis::viewer::widget::KeyCommandsDialog::KeyCommandsDialog( QWidget *parent )
+isis::viewer::ui::KeyCommandsDialog::KeyCommandsDialog( QWidget *parent )
 	: QDialog( parent )
 {
 	m_Interface.setupUi( this );
@@ -37,7 +37,7 @@ isis::viewer::widget::KeyCommandsDialog::KeyCommandsDialog( QWidget *parent )
 	m_KeyCommands.push_back( std::make_pair<std::string, std::string>( "Center crosshair", "Space" ) );
 	m_KeyCommands.push_back( std::make_pair<std::string, std::string>( "Propagate zooming", "P, Z" ) );
 	m_KeyCommands.push_back( std::make_pair<std::string, std::string>( "Ignore orientation", "I, O" ) );
-	m_KeyCommands.push_back( std::make_pair<std::string, std::string>( "Toggle zmap mode", "T, Z, M" ) );
+	m_KeyCommands.push_back( std::make_pair<std::string, std::string>( "Geometrical view", "G, V" ) );
 	m_KeyCommands.push_back( std::make_pair<std::string, std::string>( "Show preferences", "S, P" ) );
 	m_KeyCommands.push_back( std::make_pair<std::string, std::string>( "Show labels", "S, L" ) );
 	m_KeyCommands.push_back( std::make_pair<std::string, std::string>( "Show crosshair", "S, C" ) );
@@ -60,7 +60,7 @@ isis::viewer::widget::KeyCommandsDialog::KeyCommandsDialog( QWidget *parent )
 	insertIntoTable();
 }
 
-void isis::viewer::widget::KeyCommandsDialog::insertIntoTable()
+void isis::viewer::ui::KeyCommandsDialog::insertIntoTable()
 {
 	unsigned short index = 0;
 	typedef std::list< std::pair< std::string, std::string > >::const_reference CommandsRef;

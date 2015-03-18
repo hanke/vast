@@ -1,1 +1,4 @@
 debian/vast.desktop usr/share/applications
+debian/tmp/usr/share/pixmaps/*
+debian/tmp/usr/bin/*
+debian/tmp/usr/lib/vast/plugins/libvastPlugin_*.so usr/lib/vast/plugins

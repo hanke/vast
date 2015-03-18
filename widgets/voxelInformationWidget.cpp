@@ -26,37 +26,62 @@
  *      Author: tuerke
  ******************************************************************/
 #include "voxelInformationWidget.hpp"
-#include <imageholder.hpp>
-#include <qviewercore.hpp>
+#include "../viewer/imageholder.hpp"
+#include "../viewer/qviewercore.hpp"
 
 namespace isis
 {
 namespace viewer
 {
-namespace widget
+namespace ui
 {
 
 VoxelInformationWidget::VoxelInformationWidget( QWidget *parent, QViewerCore *core )
 	: QWidget( parent ),
 	  m_ViewerCore( core ),
-	  isConnected( false )
+	  isConnected( false ),
+	  m_UpperHalfColormapLabel( new QLabel( this ) ),
+	  m_sepWidget( new QWidget( this ) ),
+	  m_LowerHalfColormapLabel( new QLabel( this ) ),
+	  m_LabelMin( new QLabel ( this ) ),
+	  m_LabelMax( new QLabel( this ) ),
+	  m_LowerThreshold( new QLabel( this ) ),
+	  m_UpperThreshold( new QLabel( this ) )
 {
 	m_Interface.setupUi( this );
-	m_Interface.frame_4->setMaximumHeight( m_ViewerCore->getOptionMap()->getPropertyAs<uint16_t>( "maxOptionWidgetHeight" ) );
-	m_Interface.frame_4->setMinimumHeight( m_ViewerCore->getOptionMap()->getPropertyAs<uint16_t>( "minOptionWidgetHeight" ) );
-	m_Interface.rowBox->setMinimum( 0 );
-	m_Interface.columnBox->setMinimum( 0 );
+	m_LayoutLeft = new QVBoxLayout( m_Interface.leftFrame );
+	m_LayoutRight = new QVBoxLayout( m_Interface.rightFrame );
+	m_LayoutLeft->setContentsMargins( 2, 0, 0, 0 );
+	m_LayoutRight->setContentsMargins( 2, 0, 0, 0 );
+	m_LayoutLeft->setAlignment( Qt::AlignVCenter );
+	m_LayoutRight->setAlignment( Qt::AlignVCenter );
+	m_LowerThreshold->setAlignment( Qt::AlignRight );
+	m_UpperThreshold->setAlignment( Qt::AlignRight );
+	m_LabelMax->setAlignment( Qt::AlignLeft );
+
+	m_Interface.frame_4->setMaximumHeight( m_ViewerCore->getSettings()->getPropertyAs<uint16_t>( "maxOptionWidgetHeight" ) );
+	m_Interface.frame_4->setMinimumHeight( m_ViewerCore->getSettings()->getPropertyAs<uint16_t>( "minOptionWidgetHeight" ) );
+	m_Interface.columnSpin->setMinimum( 0 );
+	m_Interface.rowSpin->setMinimum( 0 );
 	m_Interface.sliceBox->setMinimum( 0 );
-	m_Interface.upperHalfColormapLabel->setMaximumHeight( 20 );
+	m_UpperHalfColormapLabel->setMaximumHeight( 20 );
 	m_Interface.playButton->setIcon( QIcon( ":/common/play.png" ) );
-	m_tThread = new TimePlayThread( m_ViewerCore, &m_Interface );
+	m_tThread = new TimePlayThread( this, m_ViewerCore, &m_Interface );
+	QVBoxLayout *layout = new QVBoxLayout( );
+	layout->setContentsMargins( 5, 0, 5, 0 );
+	layout->addWidget( m_UpperHalfColormapLabel );
+	layout->addWidget( m_sepWidget );
+	layout->addWidget( m_LowerHalfColormapLabel );
+	m_Interface.colormapButton->setLayout( layout );
+	m_Interface.colormapButton->setSizePolicy( QSizePolicy::Minimum, QSizePolicy::Minimum );
+	m_Interface.colormapButton->setMinimumHeight( 10 );
 
 }
 
 void VoxelInformationWidget::disconnectSignals()
 {
-	disconnect( m_Interface.rowBox, SIGNAL( valueChanged( int ) ), this, SLOT( voxPosChanged() ) );
-	disconnect( m_Interface.columnBox, SIGNAL( valueChanged( int ) ), this, SLOT( voxPosChanged() ) );
+	disconnect( m_Interface.columnSpin, SIGNAL( valueChanged( int ) ), this, SLOT( voxPosChanged() ) );
+	disconnect( m_Interface.rowSpin, SIGNAL( valueChanged( int ) ), this, SLOT( voxPosChanged() ) );
 	disconnect( m_Interface.sliceBox, SIGNAL( valueChanged( int ) ), this, SLOT( voxPosChanged() ) );
 	disconnect( m_Interface.xBox, SIGNAL( valueChanged( double ) ), this, SLOT( physPosChanged() ) );
 	disconnect( m_Interface.yBox, SIGNAL( valueChanged( double ) ), this, SLOT( physPosChanged() ) );
@@ -66,8 +91,8 @@ void VoxelInformationWidget::disconnectSignals()
 
 void VoxelInformationWidget::reconnectSignals()
 {
-	connect( m_Interface.rowBox, SIGNAL( valueChanged( int ) ), this, SLOT( voxPosChanged() ) );
-	connect( m_Interface.columnBox, SIGNAL( valueChanged( int ) ), this, SLOT( voxPosChanged() ) );
+	connect( m_Interface.columnSpin, SIGNAL( valueChanged( int ) ), this, SLOT( voxPosChanged() ) );
+	connect( m_Interface.rowSpin, SIGNAL( valueChanged( int ) ), this, SLOT( voxPosChanged() ) );
 	connect( m_Interface.sliceBox, SIGNAL( valueChanged( int ) ), this, SLOT( voxPosChanged() ) );
 	connect( m_Interface.xBox, SIGNAL( valueChanged( double ) ), this, SLOT( physPosChanged() ) );
 	connect( m_Interface.yBox, SIGNAL( valueChanged( double ) ), this, SLOT( physPosChanged() ) );
@@ -78,28 +103,46 @@ void VoxelInformationWidget::reconnectSignals()
 void VoxelInformationWidget::connectSignals()
 {
 	connect( m_ViewerCore, SIGNAL( emitVoxelCoordChanged( util::ivector4 ) ), this, SLOT( synchronizePos( util::ivector4 ) ) );
-	connect( m_ViewerCore, SIGNAL( emitPhysicalCoordsChanged( util::fvector4 ) ), this, SLOT( synchronizePos( util::fvector4 ) ) );
+	connect( m_ViewerCore, SIGNAL( emitPhysicalCoordsChanged( util::fvector3 ) ), this, SLOT( synchronizePos( util::fvector3 ) ) );
 	connect( m_ViewerCore, SIGNAL( emitUpdateScene() ), this, SLOT( updateLowerUpperThreshold() ) );
-	connect( m_Interface.rowBox, SIGNAL( valueChanged( int ) ), this, SLOT( voxPosChanged() ) );
-	connect( m_Interface.columnBox, SIGNAL( valueChanged( int ) ), this, SLOT( voxPosChanged() ) );
+	connect( m_Interface.columnSpin, SIGNAL( valueChanged( int ) ), this, SLOT( voxPosChanged() ) );
+	connect( m_Interface.rowSpin, SIGNAL( valueChanged( int ) ), this, SLOT( voxPosChanged() ) );
 	connect( m_Interface.sliceBox, SIGNAL( valueChanged( int ) ), this, SLOT( voxPosChanged() ) );
 	connect( m_Interface.xBox, SIGNAL( valueChanged( double ) ), this, SLOT( physPosChanged() ) );
 	connect( m_Interface.yBox, SIGNAL( valueChanged( double ) ), this, SLOT( physPosChanged() ) );
 	connect( m_Interface.zBox, SIGNAL( valueChanged( double ) ), this, SLOT( physPosChanged() ) );
-	connect( m_Interface.timestepSlider, SIGNAL( sliderMoved( int ) ), m_ViewerCore, SLOT( timestepChanged( int ) ) );
-	connect( m_Interface.timestepSpinBox, SIGNAL( valueChanged( int ) ), m_ViewerCore, SLOT( timestepChanged( int ) ) );
-	connect( m_Interface.timestepSlider, SIGNAL( sliderMoved( int ) ), m_Interface.timestepSpinBox, SLOT( setValue( int ) ) );
-	connect( m_Interface.timestepSpinBox, SIGNAL( valueChanged( int ) ), m_Interface.timestepSlider, SLOT( setValue( int ) ) );
+	connect( m_Interface.timestepSlider, SIGNAL( sliderMoved( int ) ), this, SLOT( timeStepChanged(int) ) );
+	connect( m_Interface.timestepSpinBox, SIGNAL( valueChanged( int ) ), this, SLOT( timeStepChanged(int) ) );
+	connect( m_Interface.timestepSlider, SIGNAL( sliderMoved( int ) ), this, SLOT( timeStepChanged(int) ) );
+	connect( m_Interface.timestepSpinBox, SIGNAL( valueChanged( int ) ), this, SLOT( timeStepChanged(int) ) );
 	connect( m_tThread, SIGNAL( finished() ), this, SLOT( timePlayFinished() ) );
 	connect( m_Interface.playButton, SIGNAL( clicked() ), this, SLOT( playTimecourse() ) );
+	connect( m_Interface.colormapButton, SIGNAL( clicked() ), this, SLOT( onLUTMenuClicked() ) );
 	isConnected = true;
 }
+
+void VoxelInformationWidget::timeStepChanged ( int ts )
+{
+	disconnect( m_Interface.timestepSlider, SIGNAL( sliderMoved( int ) ), this, SLOT( timeStepChanged(int) ) );
+	disconnect( m_Interface.timestepSpinBox, SIGNAL( valueChanged( int ) ), this, SLOT( timeStepChanged(int) ) );
+	disconnect( m_Interface.timestepSlider, SIGNAL( sliderMoved( int ) ), this, SLOT( timeStepChanged(int) ) );
+	disconnect( m_Interface.timestepSpinBox, SIGNAL( valueChanged( int ) ), this, SLOT( timeStepChanged(int) ) );
+	m_ViewerCore->timestepChanged(ts);
+	m_Interface.timestepSlider->setValue(ts);
+	m_Interface.timestepSpinBox->setValue(ts);
+	connect( m_Interface.timestepSlider, SIGNAL( sliderMoved( int ) ), this, SLOT( timeStepChanged(int) ) );
+	connect( m_Interface.timestepSpinBox, SIGNAL( valueChanged( int ) ), this, SLOT( timeStepChanged(int) ) );
+	connect( m_Interface.timestepSlider, SIGNAL( sliderMoved( int ) ), this, SLOT( timeStepChanged(int) ) );
+	connect( m_Interface.timestepSpinBox, SIGNAL( valueChanged( int ) ), this, SLOT( timeStepChanged(int) ) );
+
+}
+
 
 void VoxelInformationWidget::updateLowerUpperThreshold()
 {
 	if( m_ViewerCore->hasImage() ) {
-		m_Interface.lowerThresholdLabel->setText( QString::number( m_ViewerCore->getCurrentImage()->lowerThreshold, 'g', 4 ) );
-		m_Interface.upperThresholdLabel->setText( QString::number( m_ViewerCore->getCurrentImage()->upperThreshold, 'g', 4 ) );
+		m_LowerThreshold->setText( QString::number( m_ViewerCore->getCurrentImage()->getImageProperties().lowerThreshold, 'g', 4 ) );
+		m_UpperThreshold->setText( QString::number( m_ViewerCore->getCurrentImage()->getImageProperties().upperThreshold, 'g', 4 ) );
 	}
 }
 
@@ -129,7 +172,7 @@ void VoxelInformationWidget::timePlayFinished()
 
 void VoxelInformationWidget::physPosChanged()
 {
-	util::fvector4 physicalCoord ( m_Interface.xBox->text().toFloat(),
+	util::fvector3 physicalCoord ( m_Interface.xBox->text().toFloat(),
 								   m_Interface.yBox->text().toFloat(),
 								   m_Interface.zBox->text().toFloat() );
 	m_ViewerCore->physicalCoordsChanged( physicalCoord );
@@ -137,10 +180,10 @@ void VoxelInformationWidget::physPosChanged()
 
 void VoxelInformationWidget::voxPosChanged()
 {
-	util::ivector4 voxelCoords( m_Interface.rowBox->text().toInt(),
-								m_Interface.columnBox->text().toInt(),
+	util::ivector4 voxelCoords( m_Interface.columnSpin->text().toInt(),
+								m_Interface.rowSpin->text().toInt(),
 								m_Interface.sliceBox->text().toInt(),
-								m_ViewerCore->getCurrentImage()->voxelCoords[3] );
+								m_ViewerCore->getCurrentImage()->getImageProperties().timestep );
 	m_ViewerCore->physicalCoordsChanged( m_ViewerCore->getCurrentImage()->getISISImage()->getPhysicalCoordsFromIndex( voxelCoords ) ) ;
 
 }
@@ -150,110 +193,102 @@ void VoxelInformationWidget::voxPosChanged()
 void VoxelInformationWidget::synchronize()
 {
 	if( m_ViewerCore->hasImage() ) {
+		setVisible( true );
 		const boost::shared_ptr<ImageHolder> image = m_ViewerCore->getCurrentImage();
 		disconnectSignals();
-		m_Interface.colormapFrame->setVisible( !image->isRGB );
+		m_Interface.colormapFrame->setVisible( !image->getImageProperties().isRGB );
 
-		if( image->imageType == ImageHolder::structural_image ) {
-			m_Interface.colormapGrid->addWidget( m_Interface.labelMin, 0, 0 );
-			m_Interface.colormapGrid->addWidget( m_Interface.upperHalfColormapLabel, 0, 1 );
-			m_Interface.colormapGrid->addWidget( m_Interface.labelMax, 0, 2 );
-			m_Interface.lowerHalfColormapLabel->setVisible( false );
-			m_Interface.lowerThresholdLabel->setVisible( false );
-			m_Interface.upperThresholdLabel->setVisible( false );
-			m_Interface.upperHalfColormapLabel->adjustSize();
-			QSize size = m_Interface.upperHalfColormapLabel->size();
-			m_Interface.upperHalfColormapLabel->setPixmap(
-				util::Singletons::get<color::Color, 10>().getIcon( image->lut, size.width(), size.height() - 10 ).pixmap( size.width(), size.height() - 10 ) );
-		} else if ( image->imageType == ImageHolder::z_map ) {
-			m_Interface.colormapGrid->addWidget( m_Interface.upperThresholdLabel, 0, 0 );
-			m_Interface.colormapGrid->addWidget( m_Interface.upperHalfColormapLabel, 0, 1 );
-			m_Interface.colormapGrid->addWidget( m_Interface.labelMax, 0, 2 );
-			m_Interface.colormapGrid->addWidget( m_Interface.lowerThresholdLabel, 1, 0 );
-			m_Interface.colormapGrid->addWidget( m_Interface.lowerHalfColormapLabel, 1, 1 );
-			m_Interface.colormapGrid->addWidget( m_Interface.labelMin, 1, 2 );
-			m_Interface.lowerThresholdLabel->setVisible( true );
-			m_Interface.upperThresholdLabel->setVisible( true );
-			m_Interface.lowerThresholdLabel->setText( QString::number( image->lowerThreshold, 'g', 4 ) );
-			m_Interface.upperThresholdLabel->setText( QString::number( image->upperThreshold, 'g', 4 ) );
-			m_Interface.upperHalfColormapLabel->adjustSize();
-			QSize size = m_Interface.upperHalfColormapLabel->size();
-			m_Interface.upperHalfColormapLabel->setPixmap(
-				util::Singletons::get<color::Color, 10>().getIcon( image->lut, size.width(), size.height() - 10, color::Color::upper_half ).pixmap( size.width(), size.height() - 10 ) );
-			m_Interface.lowerHalfColormapLabel->setPixmap(
-				util::Singletons::get<color::Color, 10>().getIcon( image->lut, size.width(), size.height() - 10, color::Color::lower_half, true ).pixmap( size.width(), size.height() - 10 ) );
+		if( image->getImageProperties().imageType == ImageHolder::structural_image ) {
+			m_Interface.frame_6->setMinimumHeight( 15 );
+			m_sepWidget->setVisible( false );
+			m_LowerThreshold->setVisible( false );
+			m_UpperThreshold->setVisible( false );
+			m_LayoutLeft->addWidget( m_LabelMin );
+			m_LayoutRight->addWidget( m_LabelMax );
+			m_LabelMax->setVisible( true );
+			m_LabelMin->setVisible( true );
+			m_LabelMin->setAlignment( Qt::AlignRight );
+			m_LowerHalfColormapLabel->setVisible( false );
+		} else if ( image->getImageProperties().imageType == ImageHolder::statistical_image ) {
+			m_Interface.frame_6->setMinimumHeight( 40 );
+			m_sepWidget->setVisible( true );
+			m_LowerThreshold->setText( QString::number( image->getImageProperties().lowerThreshold, 'g', 4 ) );
+			m_UpperThreshold->setText( QString::number( image->getImageProperties().upperThreshold, 'g', 4 ) );
+			m_UpperThreshold->setVisible( true );
+			m_LabelMax->setVisible( true );
 
-			if( image->minMax.first->as<double>() >= 0 ) {
-				m_Interface.lowerHalfColormapLabel->setVisible( false );
-				m_Interface.lowerThresholdLabel->setVisible( false );
-				m_Interface.labelMin->setVisible( false );
+			if( image->getImageProperties().minMax.first->as<double>() < 0 && image->getImageProperties().minMax.second->as<double>() > 0 ) {
+				m_sepWidget->setVisible( true );
 			} else {
-				m_Interface.lowerHalfColormapLabel->setVisible( true );
-				m_Interface.lowerThresholdLabel->setVisible( true );
-				m_Interface.labelMin->setVisible( true );
+				m_sepWidget->setVisible( false );
 			}
 
-			if( image->minMax.second->as<double>() <= 0 ) {
-				m_Interface.upperHalfColormapLabel->setVisible( false );
-				m_Interface.upperThresholdLabel->setVisible( false );
-				m_Interface.labelMax->setVisible( false );
+			if( image->getImageProperties().minMax.first->as<double>() >= 0 ) {
+				m_LowerHalfColormapLabel->setVisible( false );
+				m_LowerThreshold->setVisible( false );
+				m_LabelMin->setVisible( false );
+				m_LayoutLeft->addWidget( m_UpperThreshold );
+				m_LayoutRight->addWidget( m_LabelMax );
 			} else {
-				m_Interface.upperHalfColormapLabel->setVisible( true );
-				m_Interface.upperThresholdLabel->setVisible( true );
-				m_Interface.labelMax->setVisible( true );
+				m_LowerHalfColormapLabel->setVisible( true );
+				m_LowerThreshold->setVisible( true );
+				m_LabelMin->setVisible( true );
+				m_LayoutLeft->addWidget( m_UpperThreshold );
+				m_LayoutLeft->addWidget( m_LowerThreshold );
+				m_LayoutRight->addWidget( m_LabelMax );
+				m_LayoutRight->addWidget( m_LabelMin );
+				m_LabelMin->setAlignment( Qt::AlignLeft );
+			}
+
+			if( image->getImageProperties().minMax.second->as<double>() <= 0 ) {
+				m_UpperHalfColormapLabel->setVisible( false );
+				m_UpperThreshold->setVisible( false );
+				m_LabelMax->setVisible( false );
+				m_LabelMin->setVisible( true );
+				m_LowerThreshold->setVisible( true );
+				m_LowerHalfColormapLabel->setVisible( true );
+				m_LayoutRight->addWidget( m_LabelMin );
+				m_LayoutLeft->addWidget( m_LowerThreshold );
+			} else {
+				m_UpperHalfColormapLabel->setVisible( true );
 
 			}
 		}
 
-		if( !image->isRGB ) {
-			m_Interface.labelMin->setText( QString::number( image->minMax.first->as<double>(), 'g', 4 ) );
-			m_Interface.labelMax->setText( QString::number( image->minMax.second->as<double>(), 'g', 4 ) );
+		if( !image->getImageProperties().isRGB ) {
+			m_LabelMin->setText( QString::number( image->getImageProperties().scalingMinMax.first, 'g', 4 ) );
+			m_LabelMax->setText( QString::number( image->getImageProperties().scalingMinMax.second, 'g', 4 ) );
 		}
 
 		const util::ivector4 outerCorner = util::ivector4( image->getImageSize()[0] - 1, image->getImageSize()[1] - 1, image->getImageSize()[2] - 1 );
 
-		m_Interface.rowBox->setMaximum( outerCorner[0] );
+		m_Interface.columnSpin->setMaximum( outerCorner[0] );
 
-		m_Interface.columnBox->setMaximum( outerCorner[1] );
+		m_Interface.rowSpin->setMaximum( outerCorner[1] );
 
 		m_Interface.sliceBox->setMaximum( outerCorner[2] );
 
-		const util::fvector4 physicalBegin = image->getISISImage()->getPhysicalCoordsFromIndex( util::ivector4() );
+		m_Interface.xBox->setMinimum( -1000 );
 
-		const util::fvector4 physicalEnd = image->getISISImage()->getPhysicalCoordsFromIndex( outerCorner );
+		m_Interface.xBox->setMaximum( 1000 );
 
-		m_Interface.xBox->setMinimum( physicalBegin[0] < physicalEnd[0] ? physicalBegin[0] : physicalEnd[0] );
+		m_Interface.yBox->setMinimum( -1000 );
 
-		m_Interface.xBox->setMaximum( physicalBegin[0] > physicalEnd[0] ? physicalBegin[0] : physicalEnd[0] );
+		m_Interface.yBox->setMaximum( 1000 );
 
-		m_Interface.yBox->setMinimum( physicalBegin[1] < physicalEnd[1] ? physicalBegin[1] : physicalEnd[1] );
+		m_Interface.zBox->setMinimum( -1000 );
 
-		m_Interface.yBox->setMaximum( physicalBegin[1] > physicalEnd[1] ? physicalBegin[1] : physicalEnd[1] );
+		m_Interface.zBox->setMaximum( 1000 );
 
-		m_Interface.zBox->setMinimum( physicalBegin[2] < physicalEnd[2] ? physicalBegin[2] : physicalEnd[2] );
+		synchronizePos( image->getImageProperties().voxelCoords );
 
-		m_Interface.zBox->setMaximum( physicalBegin[2] > physicalEnd[2] ? physicalBegin[2] : physicalEnd[2] );
+		const util::fvector3 transformedVec = image->getImageProperties().latchedOrientation.dot( image->getImageProperties().voxelSize );
 
-		synchronizePos( image->voxelCoords );
+		m_Interface.xBox->setSingleStep( fabs( transformedVec[0] ) );
 
-		util::fvector4 voxelSpacing;
+		m_Interface.yBox->setSingleStep( fabs( transformedVec[1] ) );
 
-		if( image->getISISImage()->hasProperty( "voxelGap" ) ) {
-			voxelSpacing = image->getISISImage()->getPropertyAs<util::fvector4>( "voxelSize" ) + image->getISISImage()->getPropertyAs<util::fvector4>( "voxelGap" );
-		} else {
-			voxelSpacing = image->getISISImage()->getPropertyAs<util::fvector4>( "voxelSize" );
-		}
-
-		boost::numeric::ublas::vector<float> vSpacing = boost::numeric::ublas::vector<float>( 4 );
-
-		for( unsigned short i = 0; i < 4; i++ ) {
-			vSpacing( i ) = voxelSpacing[i];
-		}
-
-		boost::numeric::ublas::vector<float> transformedVec = boost::numeric::ublas::prod( image->getNormalizedImageOrientation(), vSpacing );
-		m_Interface.xBox->setSingleStep( fabs( transformedVec( 0 ) ) );
-		m_Interface.yBox->setSingleStep( fabs( transformedVec( 1 ) ) );
-		m_Interface.zBox->setSingleStep( fabs( transformedVec( 2 ) ) );
+		m_Interface.zBox->setSingleStep( fabs( transformedVec[2] ) );
 
 		if( !isConnected ) {
 			connectSignals();
@@ -274,73 +309,100 @@ void VoxelInformationWidget::synchronize()
 			m_Interface.timeStepFrame->setVisible( false );
 		}
 
+		m_Interface.colormapFrame->adjustSize();
+
+		if( image->getImageProperties().imageType == ImageHolder::structural_image ) {
+			QSize size = m_Interface.colormapButton->size();
+			m_UpperHalfColormapLabel->setPixmap(
+				util::Singletons::get<color::Color, 10>().getIcon( image->getImageProperties().lut, size.width(), size.height() - 10 ).pixmap( size.width(), size.height() - 10 ) );
+		} else if ( image->getImageProperties().imageType == ImageHolder::statistical_image ) {
+			QSize size = m_Interface.colormapButton->size();
+			m_UpperHalfColormapLabel->setPixmap(
+				util::Singletons::get<color::Color, 10>().getIcon( image->getImageProperties().lut, size.width(), size.height() - 15, color::Color::upper_half ).pixmap( size.width(), size.height() - 15 ) );
+			m_LowerHalfColormapLabel->setPixmap(
+				util::Singletons::get<color::Color, 10>().getIcon( image->getImageProperties().lut, size.width(), size.height() - 15, color::Color::lower_half, true ).pixmap( size.width(), size.height() - 15 ) );
+		}
+
+
 		reconnectSignals();
+	} else {
+		setVisible( false );
 	}
 }
 
-void VoxelInformationWidget::synchronizePos( util::fvector4 physicalCoords )
+void VoxelInformationWidget::synchronizePos( util::fvector3 physicalCoords )
 {
-	synchronizePos( m_ViewerCore->getCurrentImage()->getISISImage()->getIndexFromPhysicalCoords( physicalCoords, true ) );
+	synchronizePos( m_ViewerCore->getCurrentImage()->getISISImage()->getIndexFromPhysicalCoords( physicalCoords ) );
 }
 
 void VoxelInformationWidget::synchronizePos( util::ivector4 voxelCoords )
 {
 	boost::shared_ptr<ImageHolder> image = m_ViewerCore->getCurrentImage();
-	const std::string typeName = image->getISISImage()->getChunk( voxelCoords[0], voxelCoords[1], voxelCoords[2], voxelCoords[3], false ).getTypeName();
+	image->correctVoxelCoords<3>( voxelCoords );
+	const isis::data::Chunk &chunk = image->getISISImage()->getChunk( voxelCoords[0], voxelCoords[1], voxelCoords[2], voxelCoords[3], false );
+	const std::string typeName = chunk.getTypeName();
 	m_Interface.intensityValue->setToolTip( typeName.substr( 0, typeName.length() - 1 ).c_str() );
 
-	switch( image->getISISImage()->getChunk( voxelCoords[0], voxelCoords[1], voxelCoords[2], voxelCoords[3], false ).getTypeID() ) {
-	case isis::data::ValuePtr<bool>::staticID:
+	switch( chunk.getTypeID() ) {
+	case isis::data::ValueArray<bool>::staticID:
 		displayIntensity<bool>( voxelCoords );
 		break;
-	case isis::data::ValuePtr<int8_t>::staticID:
+	case isis::data::ValueArray<int8_t>::staticID:
 		displayIntensity<int8_t>( voxelCoords );
 		break;
-	case isis::data::ValuePtr<uint8_t>::staticID:
+	case isis::data::ValueArray<uint8_t>::staticID:
 		displayIntensity<uint8_t>( voxelCoords );
 		break;
-	case isis::data::ValuePtr<int16_t>::staticID:
+	case isis::data::ValueArray<int16_t>::staticID:
 		displayIntensity<int16_t>( voxelCoords );
 		break;
-	case isis::data::ValuePtr<uint16_t>::staticID:
+	case isis::data::ValueArray<uint16_t>::staticID:
 		displayIntensity<uint16_t>( voxelCoords );
 		break;
-	case isis::data::ValuePtr<int32_t>::staticID:
+	case isis::data::ValueArray<int32_t>::staticID:
 		displayIntensity<int32_t>( voxelCoords );
 		break;
-	case isis::data::ValuePtr<uint32_t>::staticID:
+	case isis::data::ValueArray<uint32_t>::staticID:
 		displayIntensity<uint32_t>( voxelCoords );
 		break;
-	case isis::data::ValuePtr<int64_t>::staticID:
+	case isis::data::ValueArray<int64_t>::staticID:
 		displayIntensity<int64_t>( voxelCoords );
 		break;
-	case isis::data::ValuePtr<uint64_t>::staticID:
+	case isis::data::ValueArray<uint64_t>::staticID:
 		displayIntensity<uint64_t>( voxelCoords );
 		break;
-	case isis::data::ValuePtr<float>::staticID:
+	case isis::data::ValueArray<float>::staticID:
 		displayIntensity<float>( voxelCoords );
 		break;
-	case isis::data::ValuePtr<double>::staticID:
+	case isis::data::ValueArray<double>::staticID:
 		displayIntensity<double>( voxelCoords );
 		break;
-	case isis::data::ValuePtr<util::color24>::staticID:
+	case isis::data::ValueArray<util::color24>::staticID:
 		displayIntensityColor<util::color24>( voxelCoords );
 		break;
-	case isis::data::ValuePtr<util::color48>::staticID:
+	case isis::data::ValueArray<util::color48>::staticID:
 		displayIntensityColor<util::color48> ( voxelCoords );
 		break;
 	}
 
+	m_Interface.timestepSpinBox->setValue( image->getImageProperties().timestep );
+	image->getImageProperties().voxelValue = m_Interface.intensityValue->text().toDouble();
 	disconnectSignals();
-	m_Interface.rowBox->setValue( voxelCoords[0] );
-	m_Interface.columnBox->setValue( voxelCoords[1] );
+	m_Interface.columnSpin->setValue( voxelCoords[0] );
+	m_Interface.rowSpin->setValue( voxelCoords[1] );
 	m_Interface.sliceBox->setValue( voxelCoords[2] );
-	const util::fvector4 physCoords = image->getISISImage()->getPhysicalCoordsFromIndex( voxelCoords );
+	const util::fvector3 physCoords = image->getISISImage()->getPhysicalCoordsFromIndex( voxelCoords );
 	m_Interface.xBox->setValue( physCoords[0] );
 	m_Interface.yBox->setValue( physCoords[1] );
 	m_Interface.zBox->setValue( physCoords[2] );
 	reconnectSignals();
 
+}
+
+void VoxelInformationWidget::onLUTMenuClicked()
+{
+	m_ViewerCore->getUICore()->getMainWindow()->preferencesDialog->getUI().tabWidget->setCurrentIndex( 0 );
+	m_ViewerCore->getUICore()->getMainWindow()->preferencesDialog->show();
 }
 
 

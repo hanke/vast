@@ -4,7 +4,7 @@ Priority: extra
 Maintainer: ISIS Group (The friendly isis team) <gr_isis@cbs.mpg.de>
 Uploaders: Michael Hanke <mih@debian.org>
 Build-Depends: debhelper (>= 7.0.50~), libqwt5-qt4-dev, libqt4-dev,
- libboost-filesystem-dev, libisis-core-dev, libisis-qt4-dev, python-sphinx
+ libboost-filesystem-dev, libisis-core-dev, libisis-qt4-dev, libboost-thread-dev, python-sphinx (>= 1.1.3), libfftw3-dev, libvtk5-qt4-dev
 Standards-Version: 3.9.2
 Vcs-Git: git://github.com/isis-group/vast.git
 Vcs-Browser: http://github.com/isis-group/vast
@@ -12,8 +12,9 @@ Vcs-Browser: http://github.com/isis-group/vast
 Package: vast
 Section: science
 Architecture: any
-Depends: ${shlibs:Depends}, ${misc:Depends}
-Recommends: libisis-ioplugins, libjs-jquery, libjs-underscore
+Depends: ${shlibs:Depends}, ${misc:Depends}, vast-widget-qt, vast-widget-qtgeom
+Conflicts: vast-correlationplotter, vast-histogram, vast-maskedit, vast-orientationcorrection, vast-propertytool, vast-timeplotter, vast-plugin-voxelop
+Recommends: libisis-ioplugins-common, libisis-ioplugins-dicom, libjs-jquery, libjs-underscore, vast-widget-vtk
 Description: Viewer for medical image data
  Vast supports all image formats that are supportet by the isis package,
  including nifti, dicom, vista, png, tar.gz, and raw. The viewer is capable
@@ -24,3 +25,27 @@ Description: Viewer for medical image data
  real time correlation visualization for functional images and an image
  metadata editor. Vast is able to save images in a number of file formats
  independent of the original image format.
+
+Package: vast-widget-vtk
+Section: science
+Architecture: any
+Depends: ${shlibs:Depends}, ${misc:Depends}
+Description: Widget for vast
+ The vtk-widget for vast allows you to visualize volume rendered medical
+ images inside vast.
+
+Package: vast-widget-qtgeom
+Section: science
+Architecture: any
+Depends: ${shlibs:Depends}, ${misc:Depends}
+Description: Widget for vast
+ The qtgeom widget for vast allows you to visualize images
+ considering all orientation information. 
+ 
+Package: vast-widget-qt
+Section: science
+Architecture: any
+Depends: ${shlibs:Depends}, ${misc:Depends}
+Description: Widget for vast
+ The qt widget for vast allows you to visualize images
+ latched to the plane view. 

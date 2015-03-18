@@ -62,18 +62,18 @@ private:
 
 	template<typename TYPE>
 	boost::shared_ptr<ImageHolder> _createEmptyMask( boost::shared_ptr<ImageHolder> refImage ) {
-		const util::fvector4 &refVoxelSize = refImage->getISISImage()->getPropertyAs<util::fvector4>( "voxelSize" ) +
-											 ( refImage->getISISImage()->hasProperty( "voxelGap" ) ? refImage->getISISImage()->getPropertyAs<util::fvector4>( "voxelGap" ) : util::fvector4() );
+		const util::fvector3 &refVoxelSize = refImage->getISISImage()->getPropertyAs<util::fvector3>( "voxelSize" ) +
+											 ( refImage->getISISImage()->hasProperty( "voxelGap" ) ? refImage->getISISImage()->getPropertyAs<util::fvector3>( "voxelGap" ) : util::fvector3() );
 		boost::shared_ptr< ImageHolder > retImage;
 		util::ivector4 size = refImage->getImageSize();
 		size[0] /= ( m_Interface.xRes->value() / refVoxelSize[0] );
 		size[1] /= ( m_Interface.yRes->value() / refVoxelSize[1] );
 		size[2] /= ( m_Interface.zRes->value() / refVoxelSize[2] );
-		isis::data::MemChunk<TYPE> ch( size[0], size[1], size[2] );
+		isis::data::MemChunk<TYPE> ch( size[0], size[1], size[2], size[3] );
 		ch.join( static_cast<isis::util::PropertyMap &>( *refImage->getISISImage() ) );
 		isis::data::Image mask ( ch );
-		const util::fvector4 voxelSize = util::fvector4( m_Interface.xRes->value(), m_Interface.yRes->value(), m_Interface.zRes->value() );
-		mask.setPropertyAs<util::fvector4>( "voxelSize", voxelSize );
+		const util::fvector3 voxelSize = util::fvector3( m_Interface.xRes->value(), m_Interface.yRes->value(), m_Interface.zRes->value() );
+		mask.setPropertyAs<util::fvector3>( "voxelSize", voxelSize );
 		mask.updateOrientationMatrices();
 
 		if( mask.hasProperty( "Vista/ca" ) ) {
@@ -90,7 +90,7 @@ private:
 			mask.setPropertyAs<std::string>( "Vista/cp", util::listToString<std::list<double>::iterator>( newCp.begin(), newCp.end(), " ", "", "" ) );
 		}
 
-		mask.setPropertyAs<util::fvector4>( "indexOrigin", refImage->getISISImage()->getPropertyAs<util::fvector4>( "indexOrigin" ) );
+		mask.setPropertyAs<util::fvector3>( "indexOrigin", refImage->getISISImage()->getPropertyAs<util::fvector3>( "indexOrigin" ) );
 
 		if( m_Interface.maskName->text().size() ) {
 			mask.setPropertyAs<std::string>( "source", m_Interface.maskName->text().toStdString() );
@@ -99,10 +99,10 @@ private:
 		}
 
 		retImage = m_MaskEditDialog->m_ViewerCore->addImage( mask, ImageHolder::structural_image );
-		retImage->minMax.first = isis::util::Value<TYPE>( std::numeric_limits<TYPE>::min() );
-		retImage->minMax.second = isis::util::Value<TYPE>( std::numeric_limits<TYPE>::max() );
-		retImage->internMinMax.first = isis::util::Value<TYPE>( std::numeric_limits<TYPE>::min() );
-		retImage->internMinMax.second = isis::util::Value<TYPE>( std::numeric_limits<TYPE>::max() );
+		retImage->getImageProperties().minMax.first = isis::util::Value<TYPE>( std::numeric_limits<TYPE>::min() );
+		retImage->getImageProperties().minMax.second = isis::util::Value<TYPE>( std::numeric_limits<TYPE>::max() );
+		retImage->getImageProperties().scalingMinMax.first = retImage->getImageProperties().minMax.first->as<double>();
+		retImage->getImageProperties().scalingMinMax.second = retImage->getImageProperties().minMax.second->as<double>();
 
 		return retImage;
 	}

@@ -24,13 +24,13 @@ INCLUDE(${QT_USE_FILE})
 include_directories(${CMAKE_CURRENT_BINARY_DIR})
 
 QT4_ADD_RESOURCES(profileplotter_rcc_files resources/timeplotter.qrc)
-qt4_wrap_cpp(plugin_moc_files PlotterDialog.hpp)
+qt4_wrap_cpp(plugin_moc_files PlotterDialog.hpp OPTIONS -DBOOST_TT_HAS_OPERATOR_HPP_INCLUDED)
 QT4_WRAP_UI(profileplotter_ui_h ${FILES_UI})
 
 # look for fftw3
 FIND_PACKAGE(FFTW3 REQUIRED)
 
-add_library(vastPlugin_ProfilePlotter SHARED vastPlugin_ProfilePlotter.cpp PlotterDialog.cpp ${profileplotter_ui_h} ${plugin_moc_files} ${profileplotter_rcc_files})
-target_link_libraries(vastPlugin_ProfilePlotter isis_core  ${ISIS_LIB_DEPENDS} ${QWT5_library} ${QT_LIBRARIES} ${FFTW3_FFTW3_LIBRARY})
+add_library(vastPlugin_ProfilePlotter SHARED vastPlugin_ProfilePlotter.cpp PlotterDialog.cpp Plot.cpp ${profileplotter_ui_h} ${plugin_moc_files} ${profileplotter_rcc_files})
+target_link_libraries(vastPlugin_ProfilePlotter ${ISIS_LIB}  ${ISIS_LIB_DEPENDS} ${QWT5_library} ${QT_LIBRARIES} ${FFTW3_FFTW3_LIBRARY})
 
 install(TARGETS vastPlugin_ProfilePlotter DESTINATION ${VAST_PLUGIN_INFIX} COMPONENT "vast plugins" )

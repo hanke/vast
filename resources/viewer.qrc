@@ -1,16 +1,18 @@
 <RCC>
   <qresource prefix="common">
+    <file>merge.png</file>
+    <file>arrow_up.png</file>
+    <file>arrow_down.png</file>
     <file>icon_email.gif</file>
     <file>loading.gif</file>
-    <file>minerva-MPG.png</file>
     <file>pause.png</file>
     <file>play.png</file>
-    <file>vast_big.jpg</file>
+    <file>vast.png</file>
+    <file>vast.xpm</file>
     <file>close.gif</file>
     <file>saveAll.gif</file>
     <file>distribute.png</file>
     <file>exit.png</file>
-    <file>vast.jpg</file>
     <file>saveimage.gif</file>
     <file>max.gif</file>
     <file>min.gif</file>
@@ -42,5 +44,9 @@
     <file>lut/colormap11</file>
     <file>lut/standard_grey_values</file>
     <file>lut/standard_zmap</file>
+  </qresource>
+  <qresource prefix="style">
+    <file>stylesheets/fancy</file>
+    <file>stylesheets/default</file>
   </qresource>
 </RCC>

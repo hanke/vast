@@ -32,35 +32,40 @@
 
 #include "ui_aboutDialog.h"
 
-#include "qviewercore.hpp"
+#include "../viewer/qviewercore.hpp"
 
-namespace isis {
-namespace viewer {
-namespace widget {
-	
+namespace isis
+{
+namespace viewer
+{
+namespace ui
+{
+
 
 class AboutDialog : public QDialog
 {
 	Q_OBJECT
 	typedef std::map<std::string, std::string> AuthorMapType;
 public:
-	AboutDialog( QWidget *parent,  QViewerCore *core);
+	AboutDialog( QWidget *parent,  QViewerCore *core );
 
 public Q_SLOTS:
-    virtual void showEvent( QShowEvent *);
-    void onAuthorClicked( QString );
-    void sendEmailClicked();
-    
+	virtual void showEvent( QShowEvent * );
+	void onAuthorClicked( QString );
+	void sendEmailClicked();
+
 private:
 	QViewerCore *m_ViewerCore;
 	Ui::aboutDialog m_Interface;
-    
-    AuthorMapType m_authorMap;
+
+	AuthorMapType m_authorMap;
 };
-	
-	
-	
-}}}
+
+
+
+}
+}
+}
 
 
 

@@ -29,23 +29,23 @@
 #define QPREFERNCESDIALOG_HPP
 
 #include "ui_preferences.h"
-#include "qviewercore.hpp"
+#include "../viewer/qviewercore.hpp"
 
 namespace isis
 {
 namespace viewer
 {
-namespace widget
+namespace ui
 {
 
 class PreferencesDialog : public QDialog
 {
-	Q_OBJECT;
+	Q_OBJECT
 
 public:
 	PreferencesDialog( QWidget *parent, QViewerCore *core );
 protected:
-	Ui::preferencesDialog preferencesUi;
+	Ui::preferencesDialog m_Interface;
 
 
 public Q_SLOTS:
@@ -53,14 +53,14 @@ public Q_SLOTS:
 	void loadSettings();
 	void saveSettings();
 	void apply( int dummy = 0 );
-	void toggleMultithreading( bool );
-	void toggleUseAllThreads( bool );
-	void numberOfThreadsChanged( int );
 	void screenshotXChanged( int );
-	virtual void showEvent( QShowEvent * ) { loadSettings(); }
+	virtual void showEvent( QShowEvent * );
+	Ui::preferencesDialog &getUI() { return m_Interface; }
 
 private:
 	QViewerCore *m_ViewerCore;
+	void connectSignals();
+	void disconnectSignals();
 
 };
 

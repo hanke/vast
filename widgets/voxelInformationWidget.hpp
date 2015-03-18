@@ -29,15 +29,15 @@
 #define VOXELINFORMATIONWIDGET_HPP
 
 #include "ui_voxelInformationWidget.h"
-#include "common.hpp"
-#include "qviewercore.hpp"
+#include "../viewer/common.hpp"
+#include "../viewer/qviewercore.hpp"
 #include <QThread>
 
 namespace isis
 {
 namespace viewer
 {
-namespace widget
+namespace ui
 {
 
 
@@ -52,18 +52,18 @@ class VoxelInformationWidget : public QWidget
 		Ui::voxelInformationWidget *m_interface;
 
 	public:
-		TimePlayThread( QViewerCore *core, Ui::voxelInformationWidget *interface ) : m_core( core ), m_start( 0 ), m_end( 0 ), m_interface( interface ) {} ;
+		TimePlayThread( QObject *parent, QViewerCore *core, Ui::voxelInformationWidget *interface )
+			: QThread( parent ), m_core( core ), m_start( 0 ), m_end( 0 ), m_interface( interface ) {} ;
 		void setStartStop( int start, int stop ) { m_start = start; m_end = stop; }
 		void run() {
-			uint16_t deleyTime = m_core->getOptionMap()->getPropertyAs<uint16_t>( "timeseriesPlayDelayTime" );
+			uint16_t deleyTime = m_core->getSettings()->getPropertyAs<uint16_t>( "timeseriesPlayDelayTime" );
 			uint16_t t = m_start;
 
 			while( true ) {
 				t = t == m_end ? 0 : t;
-				msleep( deleyTime );
-				m_interface->timestepSlider->setValue( t );
 				m_interface->timestepSpinBox->setValue( t );
-				QApplication::processEvents();
+				msleep( deleyTime );
+				QApplication::processEvents( QEventLoop::AllEvents );
 				t++;
 
 			}
@@ -78,12 +78,14 @@ public:
 public Q_SLOTS:
 	void synchronize();
 	void synchronizePos( util::ivector4 voxelCoords );
-	void synchronizePos( util::fvector4 physicalCoords );
+	void synchronizePos( util::fvector3 physicalCoords );
 	void voxPosChanged();
 	void physPosChanged();
 	void updateLowerUpperThreshold(  );
 	void playTimecourse();
 	void timePlayFinished();
+	void onLUTMenuClicked();
+	void timeStepChanged( int );
 
 private:
 	isis::viewer::QViewerCore *m_ViewerCore;
@@ -93,6 +95,16 @@ private:
 	void disconnectSignals();
 	void reconnectSignals();
 	TimePlayThread *m_tThread;
+	QLabel *m_UpperHalfColormapLabel;
+	QWidget *m_sepWidget;
+	QLabel *m_LowerHalfColormapLabel;
+	QLabel *m_LabelMin;
+	QLabel *m_LabelMax;
+	QLabel *m_LowerThreshold;
+	QLabel *m_UpperThreshold;
+	QVBoxLayout *m_LayoutLeft;
+	QVBoxLayout *m_LayoutRight;
+
 
 	template<typename TYPE>
 	void displayIntensity( const util::ivector4 &coords ) const {
@@ -105,7 +117,7 @@ private:
 	void displayIntensityColor( const util::ivector4 &coords ) const {
 		util::checkType<TYPE>();
 		const util::Value<TYPE> vIntensity ( m_ViewerCore->getCurrentImage()->getISISImage()->voxel<TYPE>( coords[0], coords[1], coords[2], coords[3] ) );
-		const std::string intensityStr = static_cast<const util::_internal::ValueBase &>( vIntensity ).as<std::string>();
+		const std::string intensityStr = static_cast<const util::ValueBase &>( vIntensity ).as<std::string>();
 		m_Interface.intensityValue->setText( intensityStr.c_str() );
 	}
 

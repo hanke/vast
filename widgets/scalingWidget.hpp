@@ -30,13 +30,13 @@
 
 #include <QDialog>
 #include "ui_scalingDialog.h"
-#include "qviewercore.hpp"
+#include "../viewer/qviewercore.hpp"
 
 namespace isis
 {
 namespace viewer
 {
-namespace widget
+namespace ui
 {
 
 
@@ -53,16 +53,15 @@ public Q_SLOTS:
 	void scalingChanged( double );
 	void offsetChanged( double );
 	void reset();
-	void autoScale();
 	void applyScalingOffset( const double &scaling, const double &offset, bool global );
+	void on_scaleSlider_valueChanged( int );
+	void on_offsetSlider_valueChanged( int );
 
 
 private:
 	Ui::scalingOptionDialog m_Interface;
 	QViewerCore *m_ViewerCore;
 
-	std::pair<double, double> getScalingOffsetFromMinMax( const std::pair<double, double> &minMax, boost::shared_ptr<ImageHolder> image );
-	std::pair<double, double> getMinMaxFromScalingOffset( const std::pair<double, double> &scalingOffset,  boost::shared_ptr<ImageHolder> image );
 	void setMinMax( std::pair<double, double> minMax, boost::shared_ptr<ImageHolder> image ) ;
 	void setScalingOffset( std::pair<double, double> scalingOffset ) ;
 };

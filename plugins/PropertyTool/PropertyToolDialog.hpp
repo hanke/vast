@@ -30,6 +30,7 @@
 #define PROPERTYTOOLDIALOG_HPP
 
 #include <QDialog>
+#include <boost/assign.hpp>
 #include "qviewercore.hpp"
 #include "ui_propertyToolDialog.h"
 
@@ -39,76 +40,110 @@ namespace viewer
 {
 namespace plugin
 {
- 
-namespace _internal {
- 
-template<typename VTYPE>
-QString vectorToString( const VTYPE &vector ) {
-    std::stringstream vStream;
-    for( unsigned short i = 0; i < 4; i++ ) {
-         vStream << vector[i] << " ";
-    }
-    return QString( vStream.str().c_str() );
-}
 
-template<typename TYPE> struct printPropertyValue{
-QString operator()( const std::string &name, const util::PropertyMap &propMap ) {
-    return QString::number( propMap.getPropertyAs<TYPE>(name.c_str()) );
-}
+namespace _internal
+{
+
+
+class FillChunkListThread : public QThread
+{
+	boost::shared_ptr<data::Image> image;
+	Ui::propertyToolDialog *interface;
+public:
+	FillChunkListThread ( QObject *parent, Ui::propertyToolDialog *pD )
+		: QThread( parent ), interface( pD ) {}
+	void setISISImage( boost::shared_ptr<data::Image> i ) { image = i; }
+	void run() {
+		const std::vector<data::Chunk> chunks = image->copyChunksToVector( false );
+		interface->L_numberOfChunks->setVisible( chunks.size() > 1 );
+		interface->numberOfChunks->setVisible( chunks.size() > 1 );
+		interface->numberOfChunks->setText( QString::number( chunks.size() ) );
+
+		for ( unsigned short i = 0; i < chunks.size() - 1; i++ ) {
+			std::stringstream entry;
+			entry << "Chunk " << i;
+			interface->selection->addItem( entry.str().c_str() );
+		}
+	}
 };
 
-template<typename TYPE> struct printPropertyValue<util::vector4<TYPE> >{
-QString operator()( const std::string &name, const util::PropertyMap &propMap ) {
-  util::dvector4 vec=propMap.getPropertyAs<util::dvector4>(name.c_str());
-  return util::listToString(vec.begin(),vec.end()," ","","").c_str() ;
-}
+template<typename TYPE> struct fromString {
+	TYPE operator()( const std::string &string, bool &ok ) {
+		ok = true;
+		return util::Value<std::string>( string ).as<TYPE>();
+	}
 };
 
- 
 }
- 
-class TreePropMap : public util::PropertyMap 
+
+class TreePropMap : public util::PropertyMap
 {
 public:
-    void fillTreeWidget( QTreeWidget *treeWidget );
-    TreePropMap( const PropertyMap& propMap ) { static_cast<util::PropertyMap&>( *this ) = propMap; }
+	void fillTreeWidget( QTreeWidget *treeWidget );
+	TreePropMap( const PropertyMap &propMap );
 private:
-    QTreeWidget *m_TreeWidget;
-    void walkTree( QTreeWidgetItem *item, const TreePropMap &propMap, bool topLevel );
+	QTreeWidget *m_TreeWidget;
+	void walkTree( QTreeWidgetItem *item, const TreePropMap &propMap, bool topLevel );
 };
-    
+
+
+
 class PropertyToolDialog : public QDialog
 {
-    Q_OBJECT
-    
+	Q_OBJECT
+
 public:
-    PropertyToolDialog( QWidget *parent, QViewerCore *core );
- 
-    
+	PropertyToolDialog( QWidget *parent, QViewerCore *core );
+
+
 public Q_SLOTS:
-    void updateProperties();
-    void selectionChanged( int );
-    void onPropertyTreeClicked(QTreeWidgetItem*,int);
-    virtual void showEvent( QShowEvent * );
-    
+	void updateProperties();
+	void selectionChanged( int );
+	void onPropertyTreeClicked();
+	void editRequested();
+	QString getItemName( QTreeWidgetItem *item );
+	virtual void showEvent( QShowEvent * );
+	virtual void closeEvent( QCloseEvent * );
+
 private:
-    Ui::propertyToolDialog m_Interface;
-    QViewerCore *m_ViewerCore;
-    void setIfHas( const std::string &name, QLabel *nameLabel, QLabel *propLabel, const boost::shared_ptr<data::Image> image );
-    void buildUpTree( const util::PropertyMap &image );
-    
-    template<typename TYPE> 
-    QString printPropertyValue( const std::string &name )  {
-        return _internal::printPropertyValue<TYPE>()(name, static_cast<util::PropertyMap&>( *m_ViewerCore->getCurrentImage()->getISISImage() ) );
-    }
+	Ui::propertyToolDialog m_Interface;
+	QViewerCore *m_ViewerCore;
+	_internal::FillChunkListThread *m_fillChunkListThread;
 
+	void setIfHas( const std::string &name, QLabel *nameLabel, QLabel *propLabel, const boost::shared_ptr<data::Image> image );
 
+	void buildUpTree( const util::PropertyMap &image );
 
+	template<typename TYPE>
+	TYPE fromString( const std::string &string, bool &ok )  {
+		return _internal::fromString<TYPE>()( string, ok );
+	}
+
+	QString genericPrintPropertyValue( const std::string &name ) {
+		return QString( static_cast<util::PropertyMap &>( *m_ViewerCore->getCurrentImage()->getISISImage() ).propertyValue( name.c_str() ).toString().c_str() );
+
+	}
+	template<typename TYPE>
+	void checkAndSet( util::PropertyMap &map, const util::PropertyMap::PropPath &path, const QString &name ) {
+		bool ok;
+		TYPE value = fromString<TYPE>( name.toStdString(), ok );
+
+		if( ok ) {
+			map.setPropertyAs<TYPE>( path, value );
+		} else {
+			QMessageBox msgBox;
+			msgBox.setText( "Could not parse input!" );
+			msgBox.exec();
+		}
+
+	}
 
 
 };
 
- 
-}}}
+
+}
+}
+}
 
 #endif

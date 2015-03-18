@@ -1,3 +1,136 @@
+vast (0.7.4-2) UNRELEASED; urgency=low
+
+  * get rid of boost 1.48
+
+ -- ISIS Group (The friendly isis team) <gr_isis@cbs.mpg.de>  Fri, 13 Mar 2015 17:23:25 +0100
+
+vast (0.7.4-1) trusty; urgency=low
+
+  * use boost::filesystem v3
+
+ -- ISIS Group (The friendly isis team) <gr_isis@cbs.mpg.de>  Fri, 07 Nov 2014 15:34:25 +0100
+
+vast (0.7.3-1) UNRELEASED; urgency=low
+
+  * add manual scaling to ProfilePlotter
+  * add slider based UI in value scaling dialog
+  * use different approach when scaling statistical images (have a fixed 
+    middle/zero)
+
+ -- ISIS Group (The friendly isis team) <gr_isis@cbs.mpg.de>  Wed, 17 Apr 2013 14:21:20 +0200
+
+vast (0.7.2-1) UNRELEASED; urgency=low
+
+  * add option to set ignore orientation by default
+
+ -- ISIS Group (The friendly isis team) <gr_isis@cbs.mpg.de>  Fri, 20 Jul 2012 13:44:44 +0200
+ 
+vast (0.7.1-1) UNRELEASED; urgency=low
+
+  * fixed behaviour of timestep in functional images
+
+ -- ISIS Group (The friendly isis team) <gr_isis@cbs.mpg.de>  Thu, 20 Jul 2012 15:40:12 +0200
+ 
+vast (0.7.0-3) UNRELEASED; urgency=low
+
+  * removed voxel operation plugin as a separate plugin
+
+ -- ISIS Group (The friendly isis team) <gr_isis@cbs.mpg.de>  Thu, 20 Jul 2012 13:50:59 +0200
+ 
+vast (0.7.0-1) UNRELEASED; urgency=low
+
+  * adaptions libisis-core3
+  * optimized visualization performance
+  * fixed minor bugs
+
+ -- ISIS Group (The friendly isis team) <gr_isis@cbs.mpg.de>  Tue, 18 Jul 2012 11:00:23 +0200
+ 
+vast (0.6.1-1) UNRELEASED; urgency=low
+
+  * fixed bug when visualizing images with min < 0 and max < 0
+
+ -- ISIS Group (The friendly isis team) <gr_isis@cbs.mpg.de>  Tue, 19 Jun 2012 16:10:15 +0200
+ 
+vast (0.6.0-1) UNRELEASED; urgency=low
+
+  * a lot of bug fixes
+  * improved performance in geometrical widget
+
+ -- ISIS Group (The friendly isis team) <gr_isis@cbs.mpg.de>  Tue, 12 Jun 2012 14:42:15 +0200
+ 
+vast (0.5.8-1) UNRELEASED; urgency=low
+
+  * fixed bug in geometrical widget
+    that caused wrong crosshair position
+    in images that contained voxelGap
+
+ -- ISIS Group (The friendly isis team) <gr_isis@cbs.mpg.de>  Thu, 4 May 2012 12:50:15 +0200
+
+vast (0.5.7-1) UNRELEASED; urgency=low
+
+  * fixed vtk rendering widget
+
+ -- ISIS Group (The friendly isis team) <gr_isis@cbs.mpg.de>  Thu, 3 May 2012 12:46:33 +0200
+
+vast (0.5.6-1) UNRELEASED; urgency=low
+
+  * add stylesheets
+  * bugfixes vtkRendering widget
+
+ -- ISIS Group (The friendly isis team) <gr_isis@cbs.mpg.de>  Wed, 27 Apr 2012 11:03:43 +0200
+
+vast (0.5.5-1) UNRELEASED; urgency=low
+
+  * add capability to show image in new widget
+  * image operations are now propagate to all widgets
+
+ -- ISIS Group (The friendly isis team) <gr_isis@cbs.mpg.de>  Wed, 25 Apr 2012 10:26:22 +0200
+ 
+vast (0.5.4-1) UNRELEASED; urgency=low
+
+  * fixed bug when visualizing statistical images
+  * improved behaviour of geom widget
+
+ -- ISIS Group (The friendly isis team) <gr_isis@cbs.mpg.de>  Tue, 24 Apr 2012 17:09:38 +0200
+
+vast (0.5.3-1) UNRELEASED; urgency=low
+
+  * Fixed bugs
+
+ -- ISIS Group (The friendly isis team) <gr_isis@cbs.mpg.de>  Tue, 24 Apr 2012 14:39:21 +0200
+
+vast (0.5.2-2) natty; urgency=low
+
+  * fixed missing executalbe
+
+ -- ISIS Group (The friendly isis team) <gr_isis@cbs.mpg.de>  Fri, 20 Apr 2012 10:26:13 +0200
+
+vast (0.5.2-1) UNRELEASED; urgency=low
+
+  [ ISIS Group (The friendly isis team) ]
+  * fixed bug that caused saving image to the wrong location
+  * fixed vast icon problems
+
+ -- ISIS Group (The friendly isis team) <gr_isis@cbs.mpg.de>  Fri, 20 Apr 2012 09:46:00 +0200
+
+vast (0.5.1-1) UNRELEASED; urgency=low
+
+  [ ISIS Group (The friendly isis team) ]
+  * internal test release
+  * add new widgets: VTK and geometrical plane widget
+  * fixed bugs
+
+ -- ISIS Group (The friendly isis team) <gr_isis@cbs.mpg.de>  Mon, 16 Apr 2012 12:21:00 +0200
+
+vast (0.4.0~beta-1) UNRELEASED; urgency=low
+
+  [ ISIS Group (The friendly isis team) ]
+  * fixed a lot of bugs
+  * image widgets are now plugins
+  * revised some design concepts
+
+ -- Michael Hanke <mih@debian.org>  Mon, 26 Mar 2012 14:39:33 +0100
+
 vast (0.3.0~beta-1) UNRELEASED; urgency=low
 
   [ ISIS Group (The friendly isis team) ]

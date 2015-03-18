@@ -16,7 +16,7 @@
  * along with this program; if not, write to the Free Software
  * Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA  02111-1307, USA.
  *
- * Author: Erik Türke, tuerke@cbs.mpg.de
+ * Author: Erik Tuerke, tuerke@cbs.mpg.de
  *
  * HistogramDialog.cpp
  *
@@ -26,7 +26,8 @@
  *      Author: tuerke
  ******************************************************************/
 #include "HistogramDialog.hpp"
-#include <DataStorage/typeptr.hpp>
+#include <nativeimageops.hpp>
+#include <DataStorage/valuearray.hpp>
 
 
 
@@ -53,20 +54,24 @@ isis::viewer::plugin::HistogramDialog::HistogramDialog( QWidget *parent, isis::v
 void isis::viewer::plugin::HistogramDialog::paintHistogram()
 {
 	m_Plotter->clear();
+
 	if( m_ViewerCore->hasImage() && isVisible() ) {
 		std::stringstream title;
-		title << "Histogram of " << boost::filesystem::path( m_ViewerCore->getCurrentImage()->getFileNames().front() ).leaf();
+		title << "Histogram of " << boost::filesystem::path( m_ViewerCore->getCurrentImage()->getImageProperties().fileName ).leaf();
 
 		if( m_ViewerCore->getCurrentImage()->getImageSize()[3] > 1 ) {
-			title << " (volume " << m_ViewerCore->getCurrentImage()->voxelCoords[3] << ")";
+			title << " (volume " << m_ViewerCore->getCurrentImage()->getImageProperties().timestep << ")";
 		}
-		
+
 		m_Plotter->setTitle( title.str().c_str() );
 		double xData[255];
-		BOOST_FOREACH( DataContainer::const_reference image, m_ViewerCore->getDataContainer() ) {
-			if( !image.second->isRGB ) {
-				const double scaling = image.second->scalingToInternalType.first->as<double>();
-				const double offset = image.second->scalingToInternalType.second->as<double>();
+		BOOST_FOREACH( ImageHolder::Vector::const_reference image, m_ViewerCore->getImageVector() ) {
+
+
+			if( !image->getImageProperties().isRGB ) {
+				const std::vector<double> histogram = operation::NativeImageOps::getHistogramFromImage( image );
+				const double scaling = image->getImageProperties().scalingToInternalType.first->as<double>();
+				const double offset = image->getImageProperties().scalingToInternalType.second->as<double>();
 
 				for( unsigned short i = 0; i < 255; i++ ) {
 					xData[i] = ( double )( i - offset ) / scaling ;
@@ -75,11 +80,11 @@ void isis::viewer::plugin::HistogramDialog::paintHistogram()
 				QwtPlotCurve *curve = new QwtPlotCurve();
 				curve->detach();
 
-				if ( image.second.get() == m_ViewerCore->getCurrentImage().get() ) {
+				if ( image.get() == m_ViewerCore->getCurrentImage().get() ) {
 					curve->attach( m_Plotter );
 					curve->setPen( QPen( Qt::red ) );
 				} else {
-					if( image.second->isVisible ) {
+					if( image->getImageProperties().isVisible ) {
 						curve->attach( m_Plotter );
 					}
 
@@ -88,11 +93,10 @@ void isis::viewer::plugin::HistogramDialog::paintHistogram()
 					curve->setPen( pen );
 				}
 
-				const uint16_t timestep = image.second->getImageSize()[3] > 1 ? image.second->voxelCoords[3] : 0;
-				curve->setData( xData, image.second->histogramVectorWOZero[timestep], 255 );
+				curve->setData( xData, &histogram[0], 255 );
 			}
 		}
-		m_Zoomer->setZoomBase(true);
+		m_Zoomer->setZoomBase( true );
 	}
 }
 void isis::viewer::plugin::HistogramDialog::showEvent( QShowEvent * )

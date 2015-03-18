@@ -16,7 +16,7 @@
  * along with this program; if not, write to the Free Software
  * Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA  02111-1307, USA.
  *
- * Author: Erik Türke, tuerke@cbs.mpg.de
+ * Author: Erik Tuerke, tuerke@cbs.mpg.de
  *
  * MaskEdit.cpp
  *
@@ -46,35 +46,56 @@ MaskEditDialog::MaskEditDialog( QWidget *parent, QViewerCore *core )
 	  m_CreateMaskDialog( new CreateMaskDialog( parent, this ) )
 {
 	m_Interface.setupUi( this );
-	m_Interface.cut->setEnabled( false );
-	m_Interface.paint->setEnabled( false );
+	m_Interface.pickColor->setEnabled( false );
 	m_Interface.radius->setEnabled( false );
 	m_Interface.radius->setMaximum( 500 );
 	m_Interface.radius->setValue( m_Radius );
 
+	m_Interface.colorEdit->setMinimum( -std::numeric_limits<double>::max() );
+	m_Interface.colorEdit->setMaximum( std::numeric_limits<double>::max() );
+
 	util::Singletons::get<color::Color, 10>().addColormap( ":/common/maskeditLUT" );
 	connect( m_Interface.newMask, SIGNAL( clicked() ), this, SLOT( createEmptyMask() ) ) ;
 	connect( m_Interface.radius, SIGNAL( valueChanged( int ) ), SLOT( radiusChange( int ) ) );
-	connect( m_Interface.cut, SIGNAL( clicked( bool ) ), this , SLOT( cutClicked() ) );
-	connect( m_Interface.paint, SIGNAL( clicked( bool ) ), this , SLOT( paintClicked() ) );
 	connect( m_Interface.editCurrentImage, SIGNAL( clicked() ), this, SLOT( editCurrentImage() ) );
+	connect( m_Interface.pickColor, SIGNAL( clicked( bool ) ), this, SLOT( pickColorClicked() ) );
+	connect( m_Interface.closeButton, SIGNAL( clicked( bool ) ), this, SLOT( close() ) );
+	connect( m_Interface.paint, SIGNAL( clicked( bool ) ), this, SLOT( paintClicked() ) );
+	connect( m_Interface.cut, SIGNAL( clicked( bool ) ), this, SLOT( cutClicked() ) );
 
 }
 
 void MaskEditDialog::cutClicked()
 {
-	for( unsigned short i = 0; i < 3; i++ ) {
-		m_CurrentWidgetEnsemble[i].widgetImplementation->setMouseCursorIcon( QIcon( ":/common/cutCrosshair.png" ) );
-	}
-
-	m_ViewerCore->setShowCrosshair( false );
-	m_ViewerCore->updateScene();
+	if( m_CurrentMask )
+		m_Interface.colorEdit->setValue( m_CurrentMask->getImageProperties().minMax.first->as<double>() );
 }
 
 void MaskEditDialog::paintClicked()
 {
-	for( unsigned short i = 0; i < 3; i++ ) {
-		m_CurrentWidgetEnsemble[i].widgetImplementation->setMouseCursorIcon( QIcon( ":/common/paintCrosshair.png" ) );
+	if( m_CurrentMask )
+		m_Interface.colorEdit->setValue( m_CurrentMask->getImageProperties().minMax.second->as<double>() );
+}
+
+
+void MaskEditDialog::pickColorClicked()
+{
+	if( m_Interface.pickColor->isChecked() ) {
+		BOOST_FOREACH( WidgetEnsemble::reference ensembleComponent, *m_CurrentWidgetEnsemble ) {
+			ensembleComponent->getWidgetInterface()->setMouseCursorIcon( QIcon( ":/common/colorpicker.png" ) );
+		}
+		m_ViewerCore->setShowCrosshair( false );
+		m_ViewerCore->updateScene();
+	} else {
+		paintToggled();
+	}
+}
+
+
+void MaskEditDialog::paintToggled()
+{
+	BOOST_FOREACH( WidgetEnsemble::reference ensembleComponent, *m_CurrentWidgetEnsemble ) {
+		ensembleComponent->getWidgetInterface()->setMouseCursorIcon( QIcon( ":/common/paintCrosshair.png" ) );
 	}
 
 	m_ViewerCore->setShowCrosshair( false );
@@ -91,66 +112,67 @@ void MaskEditDialog::radiusChange( int r )
 
 void MaskEditDialog::showEvent( QShowEvent * )
 {
-	connect( m_ViewerCore, SIGNAL ( emitPhysicalCoordsChanged( util::fvector4 ) ), this, SLOT( physicalCoordChanged( util::fvector4 ) ) );
+	connect( m_ViewerCore, SIGNAL ( emitOnWidgetMoved( util::fvector3, Qt::MouseButton ) ), this, SLOT( physicalCoordChanged( util::fvector3, Qt::MouseButton ) ) );
+	connect( m_ViewerCore, SIGNAL ( emitOnWidgetClicked( util::fvector3, Qt::MouseButton ) ), this, SLOT( physicalCoordChanged( util::fvector3, Qt::MouseButton ) ) );
 
 	if( !m_CurrentMask ) {
-		m_Interface.cut->setEnabled( false );
-		m_Interface.paint->setEnabled( false );
 		m_Interface.radius->setEnabled( false );
 	} else {
-		m_Interface.cut->setEnabled( true );
-		m_Interface.paint->setEnabled( true );
 		m_Interface.radius->setEnabled( true );
-		m_Interface.paint->setChecked( true );
 	}
 
 }
 
 
-void MaskEditDialog::physicalCoordChanged( util::fvector4 physCoord )
+void MaskEditDialog::physicalCoordChanged( util::fvector3 physCoord, Qt::MouseButton mouseButton )
 {
-	if( m_ViewerCore->hasImage() ) {
-		if( m_CurrentMask ) {
-			switch( m_CurrentMask->majorTypeID ) {
-			case isis::data::ValuePtr<bool>::staticID:
-				manipulateVoxel<bool>( physCoord, std::numeric_limits<bool>::max(), m_CurrentMask );
-				break;
-			case isis::data::ValuePtr<int8_t>::staticID:
-				manipulateVoxel<int8_t>( physCoord, std::numeric_limits<int8_t>::max(), m_CurrentMask );
-				break;
-			case isis::data::ValuePtr<uint8_t>::staticID:
-				manipulateVoxel<uint8_t>( physCoord, std::numeric_limits<uint8_t>::max(), m_CurrentMask );
-				break;
-			case isis::data::ValuePtr<int16_t>::staticID:
-				manipulateVoxel<int16_t>( physCoord, std::numeric_limits<int16_t>::max(), m_CurrentMask );
-				break;
-			case isis::data::ValuePtr<uint16_t>::staticID:
-				manipulateVoxel<uint16_t>( physCoord, std::numeric_limits<uint16_t>::max(), m_CurrentMask );
-				break;
-			case isis::data::ValuePtr<int32_t>::staticID:
-				manipulateVoxel<int32_t>( physCoord, std::numeric_limits<int32_t>::max(), m_CurrentMask );
-				break;
-			case isis::data::ValuePtr<uint32_t>::staticID:
-				manipulateVoxel<uint32_t>( physCoord, std::numeric_limits<uint32_t>::max(), m_CurrentMask );
-				break;
-			case isis::data::ValuePtr<int64_t>::staticID:
-				manipulateVoxel<int64_t>( physCoord, std::numeric_limits<int64_t>::max(), m_CurrentMask );
-				break;
-			case isis::data::ValuePtr<uint64_t>::staticID:
-				manipulateVoxel<uint64_t>( physCoord, std::numeric_limits<uint64_t>::max(), m_CurrentMask );
-				break;
-			case isis::data::ValuePtr<double>::staticID:
-				manipulateVoxel<double>( physCoord, std::numeric_limits<double>::max(), m_CurrentMask );
-				break;
-			case isis::data::ValuePtr<float>::staticID:
-				manipulateVoxel<float>( physCoord, std::numeric_limits<float>::max(), m_CurrentMask );
-				break;
-			default:
-				LOG( Runtime, error ) << "Unknown type ID " << m_CurrentMask->majorTypeID << " when trying to paint mask";
-				break;
-			}
+	if( mouseButton == Qt::LeftButton && m_ViewerCore->hasImage() ) {
+		if( !m_Interface.pickColor->isChecked() ) {
+			if( m_CurrentMask ) {
+				switch( m_CurrentMask->getImageProperties().majorTypeID ) {
+				case isis::data::ValueArray<bool>::staticID:
+					manipulateVoxel<bool>( physCoord, m_CurrentMask );
+					break;
+				case isis::data::ValueArray<int8_t>::staticID:
+					manipulateVoxel<int8_t>( physCoord, m_CurrentMask );
+					break;
+				case isis::data::ValueArray<uint8_t>::staticID:
+					manipulateVoxel<uint8_t>( physCoord, m_CurrentMask );
+					break;
+				case isis::data::ValueArray<int16_t>::staticID:
+					manipulateVoxel<int16_t>( physCoord, m_CurrentMask );
+					break;
+				case isis::data::ValueArray<uint16_t>::staticID:
+					manipulateVoxel<uint16_t>( physCoord, m_CurrentMask );
+					break;
+				case isis::data::ValueArray<int32_t>::staticID:
+					manipulateVoxel<int32_t>( physCoord, m_CurrentMask );
+					break;
+				case isis::data::ValueArray<uint32_t>::staticID:
+					manipulateVoxel<uint32_t>( physCoord, m_CurrentMask );
+					break;
+				case isis::data::ValueArray<int64_t>::staticID:
+					manipulateVoxel<int64_t>( physCoord, m_CurrentMask );
+					break;
+				case isis::data::ValueArray<uint64_t>::staticID:
+					manipulateVoxel<uint64_t>( physCoord, m_CurrentMask );
+					break;
+				case isis::data::ValueArray<double>::staticID:
+					manipulateVoxel<double>( physCoord, m_CurrentMask );
+					break;
+				case isis::data::ValueArray<float>::staticID:
+					manipulateVoxel<float>( physCoord, m_CurrentMask );
+					break;
+				default:
+					LOG( Runtime, error ) << "Unknown type ID " << m_CurrentMask->getImageProperties().majorTypeID << " when trying to paint mask";
+					break;
+				}
 
-			m_ViewerCore->updateScene();
+				m_ViewerCore->emitImageContentChanged( m_CurrentMask );
+				m_ViewerCore->updateScene();
+			}
+		} else {
+			m_Interface.colorEdit->setValue(  m_CurrentMask->getImageProperties().voxelValue );
 		}
 	}
 
@@ -159,26 +181,19 @@ void MaskEditDialog::physicalCoordChanged( util::fvector4 physCoord )
 void MaskEditDialog::editCurrentImage()
 {
 	if( m_ViewerCore->hasImage() ) {
+		m_Interface.pickColor->setEnabled( true );
 		m_CurrentMask = m_ViewerCore->getCurrentImage();
-		m_Interface.cut->setEnabled( true );
-		m_Interface.paint->setEnabled( true );
 		m_Interface.radius->setEnabled( true );
-		m_Interface.paint->setChecked( true );
-		BOOST_FOREACH( UICore::ViewWidgetEnsembleListType::const_reference ensemble, m_ViewerCore->getUICore()->getEnsembleList() ) {
-			WidgetInterface::ImageVectorType iVector;
-
-			for( unsigned short i = 0; i < 3; i++ ) {
-				iVector = ensemble[i].widgetImplementation->getImageVector();
-
-				if( std::find( iVector.begin(), iVector.end(), m_CurrentMask ) != iVector.end() ) {
-					m_CurrentWidgetEnsemble = ensemble;
-					m_ViewerCore->attachImageToWidget( m_CurrentMask, ensemble[i].widgetImplementation ) ;
-					ensemble[i].widgetImplementation->setMouseCursorIcon( QIcon( ":/common/paintCrosshair.png" ) );
-					ensemble[i].widgetImplementation->setEnableCrosshair( false );
-
+		BOOST_FOREACH( WidgetEnsemble::Vector::reference ensemble, m_ViewerCore->getUICore()->getEnsembleList() ) {
+			if( ensemble->isCurrent() ) {
+				m_CurrentWidgetEnsemble = ensemble;
+				BOOST_FOREACH( WidgetEnsemble::reference ensembleComponent, *ensemble ) {
+					ensembleComponent->getWidgetInterface()->setMouseCursorIcon( QIcon( ":/common/paintCrosshair.png" ) );
+					ensembleComponent->getWidgetInterface()->setEnableCrosshair( false );
 				}
 			}
 		}
+		m_Interface.colorEdit->setValue( m_CurrentMask->getImageProperties().minMax.second->as<double>() );
 		m_ViewerCore->updateScene();
 	}
 }
@@ -186,17 +201,27 @@ void MaskEditDialog::editCurrentImage()
 
 void MaskEditDialog::createEmptyMask()
 {
-	m_CreateMaskDialog->show();
+	if( m_ViewerCore->hasImage() ) {
+		m_CreateMaskDialog->show();
+		m_Interface.pickColor->setEnabled( true );
+		m_ViewerCore->getUICore()->refreshUI();
+	} else {
+		QMessageBox msgBox;
+		msgBox.setIcon( QMessageBox::Critical );
+		msgBox.setText( "No image loaded. Can not create any image." );
+		msgBox.exec();
+	}
 
 }
 
 void MaskEditDialog::closeEvent( QCloseEvent * )
 {
-	disconnect( m_ViewerCore, SIGNAL ( emitPhysicalCoordsChanged( util::fvector4 ) ), this, SLOT( physicalCoordChanged( util::fvector4 ) ) );
-	BOOST_FOREACH( UICore::ViewWidgetEnsembleListType::const_reference ensemble, m_ViewerCore->getUICore()->getEnsembleList() ) {
-		for ( unsigned short i = 0; i < 3; i++ ) {
-			ensemble[i].widgetImplementation->setMouseCursorIcon( QIcon() );
-			ensemble[i].widgetImplementation->setEnableCrosshair( true );
+	disconnect( m_ViewerCore, SIGNAL ( emitOnWidgetMoved( util::fvector3, Qt::MouseButton ) ), this, SLOT( physicalCoordChanged( util::fvector3, Qt::MouseButton ) ) );
+	disconnect( m_ViewerCore, SIGNAL ( emitOnWidgetClicked( util::fvector3, Qt::MouseButton ) ), this, SLOT( physicalCoordChanged( util::fvector3, Qt::MouseButton ) ) );
+	BOOST_FOREACH( WidgetEnsemble::Vector::reference ensemble, m_ViewerCore->getUICore()->getEnsembleList() ) {
+		BOOST_FOREACH( WidgetEnsemble::reference ensembleComponent, *ensemble ) {
+			ensembleComponent->getWidgetInterface()->setMouseCursorIcon( QIcon() );
+			ensembleComponent->getWidgetInterface()->setEnableCrosshair( true );
 		}
 	}
 

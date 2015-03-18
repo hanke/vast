@@ -16,7 +16,7 @@
  * along with this program; if not, write to the Free Software
  * Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA  02111-1307, USA.
  *
- * Author: Erik Türke, tuerke@cbs.mpg.de
+ * Author: Erik Tuerke, tuerke@cbs.mpg.de
  *
  * color.hpp
  *
@@ -28,12 +28,12 @@
 #ifndef COLOR_HPP
 #define COLOR_HPP
 
-#include "common.hpp"
+#include <boost/regex.hpp>
 #include <QColor>
 #include <QVector>
 #include <QIcon>
 #include <QRgb>
-#include <boost/regex.h>
+#include <map>
 
 namespace isis
 {
@@ -45,11 +45,14 @@ class ImageHolder;
 namespace color
 {
 
+const QColor currentEnsemble = QColor( 255, 238, 203 );
+const QColor currentImage = QColor( 34, 139, 34 );
 
 class Color
 {
 public:
 	typedef QVector<QRgb> ColormapType;
+	typedef QVector<float> AlphamapType;
 	typedef std::map<std::string, ColormapType > ColormapMapType;
 	enum icon_type { lower_half, upper_half, both };
 
@@ -64,7 +67,7 @@ public:
 	bool hasColormap( const std::string &name ) const;
 	ColormapType getFallbackColormap() const;
 
-	void adaptColorMapToImage( ImageHolder *image, bool split = true );
+	void adaptColorMapToImage( ImageHolder *image );
 
 
 

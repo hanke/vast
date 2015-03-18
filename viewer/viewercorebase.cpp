@@ -27,8 +27,8 @@
  ******************************************************************/
 #include "viewercorebase.hpp"
 #include "common.hpp"
-
-#include <signal.h>
+#include "geometrical.hpp"
+#include "nativeimageops.hpp"
 
 #define STR(s) _xstr_(s)
 #define _xstr_(s) std::string(#s)
@@ -39,18 +39,16 @@ namespace viewer
 {
 
 ViewerCoreBase::ViewerCoreBase( )
-	: m_OptionsMap( boost::shared_ptr< util::PropertyMap >( new util::PropertyMap ) ),
+	: m_Settings( boost::shared_ptr< Settings >( new Settings ) ),
 	  m_CurrentAnatomicalReference( boost::shared_ptr<ImageHolder>() ),
-	  m_Mode( standard )
+	  m_Mode( default_mode )
 {
-	
 	util::Singletons::get<color::Color, 10>().initStandardColormaps();
-	setCommonViewerOptions();
 }
 
-ImageHolder::ImageListType ViewerCoreBase::addImageList( const std::list< data::Image > imageList, const ImageHolder::ImageType &imageType )
+ImageHolder::Vector ViewerCoreBase::addImageList( const std::list< data::Image > imageList, const ImageHolder::ImageType &imageType )
 {
-	ImageHolder::ImageListType retList;
+	ImageHolder::Vector retList;
 
 	if( !imageList.empty() ) {
 		BOOST_FOREACH( std::list< data::Image >::const_reference imageRef, imageList ) {
@@ -63,26 +61,53 @@ ImageHolder::ImageListType ViewerCoreBase::addImageList( const std::list< data::
 	return retList;
 }
 
-boost::shared_ptr<ImageHolder> ViewerCoreBase::addImage( const isis::data::Image &image, const isis::viewer::ImageHolder::ImageType &imageType )
+ImageHolder::Pointer ViewerCoreBase::addImage( const isis::data::Image &image, const isis::viewer::ImageHolder::ImageType &imageType )
 {
-	boost::shared_ptr<ImageHolder> retImage = m_DataContainer.addImage( image, imageType );
+	std::string fileName;
+
+	if( image.hasProperty( "source" ) ) {
+		fileName = image.getPropertyAs<std::string>( "source" );
+	} else {
+		const boost::filesystem::path path = image.getChunk( 0 ).getPropertyAs<std::string>( "source" );
+		fileName = path.branch_path().string();
+	}
+
+	ImageHolder::Pointer  retImage = ImageHolder::Pointer( new ImageHolder );
+	m_imageVector.push_back( retImage );
+
+	//look if this filename already exists.
+	if( m_ImageMap.find( fileName ) != m_ImageMap.end() ) {
+		unsigned short index = 0;
+		std::string newFileName = fileName;
+
+		while( m_ImageMap.find( newFileName ) != m_ImageMap.end() ) {
+			std::stringstream ss;
+			ss << fileName << " (" << ++index << ")";
+			newFileName = ss.str();
+		}
+
+		retImage->setImage( image, imageType, newFileName );
+		m_ImageMap[newFileName] = retImage;
+	} else {
+		retImage->setImage( image, imageType, fileName );
+		m_ImageMap[fileName] = retImage;
+	}
 
 	//setting the lutStructural
 	if( imageType == ImageHolder::structural_image ) {
-		retImage->lut = getOptionMap()->getPropertyAs<std::string>( "lutStructural" );
+		retImage->getImageProperties().lut = getSettings()->getPropertyAs<std::string>( "lutStructural" );
 
-		if( !util::Singletons::get<color::Color, 10>().hasColormap( retImage->lut ) ) {
-			retImage->lut = std::string( "standard_grey_values" );
-			getOptionMap()->setPropertyAs<std::string>( "lutStructural", retImage->lut );
+		if( !util::Singletons::get<color::Color, 10>().hasColormap( retImage->getImageProperties().lut ) ) {
+			retImage->getImageProperties().lut = std::string( "standard_grey_values" );
+			getSettings()->setPropertyAs<std::string>( "lutStructural", retImage->getImageProperties().lut );
 		}
 	} else {
-		retImage->lut = getOptionMap()->getPropertyAs<std::string>( "lutZMap" );
+		retImage->getImageProperties().lut = getSettings()->getPropertyAs<std::string>( "lutZMap" );
 
-		if( !util::Singletons::get<color::Color, 10>().hasColormap( retImage->lut ) ) {
-			retImage->lut = std::string( "standard_zmap" );
-			getOptionMap()->setPropertyAs<std::string>( "lutZMap", retImage->lut );
+		if( !util::Singletons::get<color::Color, 10>().hasColormap( retImage->getImageProperties().lut ) ) {
+			retImage->getImageProperties().lut = std::string( "standard_zmap" );
+			getSettings()->setPropertyAs<std::string>( "lutZMap", retImage->getImageProperties().lut );
 		}
-
 	}
 
 	retImage->updateColorMap();
@@ -91,111 +116,135 @@ boost::shared_ptr<ImageHolder> ViewerCoreBase::addImage( const isis::data::Image
 		m_CurrentAnatomicalReference = retImage;
 	}
 
-	m_ImageList.push_back( retImage );
-
-	if( getMode() == ViewerCoreBase::zmap && retImage->getImageSize()[3] > 1 && retImage->imageType != ImageHolder::z_map ) {
-		retImage->isVisible = false;
+	if( getMode() == ViewerCoreBase::statistical_mode && retImage->getImageSize()[3] > 1 && retImage->getImageProperties().imageType != ImageHolder::statistical_image ) {
+		retImage->getImageProperties().isVisible = false;
 	}
 
-	if ( getMode() == ViewerCoreBase::zmap && retImage->imageType == ImageHolder::z_map ) {
-		setCurrentImage( retImage );
-	} else if ( getMode() == ViewerCoreBase::standard ) {
-		setCurrentImage( retImage );
+	retImage->getImageProperties().boundingBox = geometrical::getPhysicalBoundingBox( retImage );
+
+	if( getSettings()->getPropertyAs<bool>( "checkCACP" ) ) {
+		checkForCaCp( retImage );
 	}
 
+	if( getSettings()->getPropertyAs<bool>( "setZeroToBlackStructural" ) && retImage->getImageProperties().imageType == ImageHolder::structural_image ) {
+		operation::NativeImageOps::setTrueZero( retImage );
+	}
+
+	if( getSettings()->getPropertyAs<bool>( "setZeroToBlackStatistical" ) && retImage->getImageProperties().imageType == ImageHolder::statistical_image ) {
+		operation::NativeImageOps::setTrueZero( retImage );
+	}
+
+	//connect signals to image
+	emitGlobalPhysicalCoordsChanged.connect( boost::bind( &ImageHolder::phyisicalCoordsChanged, retImage, _1 ) );
+	emitGlobalVoxelCoordsChanged.connect( boost::bind( &ImageHolder::voxelCoordsChanged, retImage, _1 ) );
+	emitGlobalTimestepChanged.connect( boost::bind( &ImageHolder::timestepChanged, retImage, _1 ) );
+
+	//emit the signal
+	emitAddImage( retImage );
 	return retImage;
 }
 
-boost::shared_ptr< ImageHolder > ViewerCoreBase::getCurrentImage()
+bool ViewerCoreBase::removeImage ( const ImageHolder::Pointer image )
+{
+	const size_t oldNumberImages = getImageVector().size();
+	LOG( Dev, info ) << "Removing image " << image->getImageProperties().fileName;
+
+	//if this image is the current one, we have to set one of the residual images to the current one
+	if( getCurrentImage().get() == image.get() ) {
+		LOG( Dev, info ) << "This was the current image so setting one of the residual images to current image";
+		ImageHolder::Vector tmpList = getImageVector();
+		tmpList.erase( std::find ( tmpList.begin(), tmpList.end(), image ) );
+
+		if( tmpList.size() ) {
+			setCurrentImage( tmpList.front() );
+		} else {
+			setCurrentImage( ImageHolder::Pointer() );
+		}
+	}
+
+	getImageVector().erase( std::find ( getImageVector().begin(), getImageVector().end(), image ) );
+	getImageMap().erase( image->getImageProperties().filePath );
+
+	emitRefreshAllWidgets();
+
+	if( ( getImageVector().size() == getImageMap().size() ) && ( getImageVector().size() == ( oldNumberImages - 1 ) ) ) {
+		return true;
+	} else {
+		return false;
+	}
+}
+
+
+ImageHolder::Pointer ViewerCoreBase::getCurrentImage() const
 {
 	if( m_CurrentImage.get() ) {
 		return m_CurrentImage;
 	} else {
-		LOG( Runtime, error ) << "Trying to fetch the current image. But there is no current image at all. Should be checked before.";
-		return boost::shared_ptr< ImageHolder >();
+		LOG( Dev, error ) << "Trying to fetch the current image. But there is no current image. Should be checked before.";
+		return ImageHolder::Pointer();
 	}
 
 }
 
-void ViewerCoreBase::setImageList( std::list< data::Image > imgList, const ImageHolder::ImageType &imageType )
-{
-	if( !imgList.empty() ) {
-		m_DataContainer.clear();
-	}
 
-	ViewerCoreBase::addImageList( imgList, imageType );
-}
-
-
-std::string ViewerCoreBase::getVersion() const
+std::string ViewerCoreBase::getVersion()
 {
 #ifdef VAST_RCS_REVISION
-        return STR( _VAST_VERSION_MAJOR ) + "." + STR( _VAST_VERSION_MINOR ) + "." + STR( _VAST_VERSION_PATCH ) + " [" + STR( VAST_RCS_REVISION ) + "]";
+	return STR( _VAST_VERSION_MAJOR ) + "." + STR( _VAST_VERSION_MINOR ) + "." + STR( _VAST_VERSION_PATCH ) + " [" + STR( VAST_RCS_REVISION ) + "]";
 #else
-        return STR( _VAST_VERSION_MAJOR ) + "." + STR( _VAST_VERSION_MINOR ) + "." + STR( _VAST_VERSION_PATCH );
+	return STR( _VAST_VERSION_MAJOR ) + "." + STR( _VAST_VERSION_MINOR ) + "." + STR( _VAST_VERSION_PATCH );
 #endif
 }
 
-
-
-void ViewerCoreBase::setCommonViewerOptions()
+bool ViewerCoreBase::hasWidget ( const std::string &identifier )
 {
-	m_OptionsMap->setPropertyAs<bool>( "zmapGlobal", false );
-	m_OptionsMap->setPropertyAs<bool>("visualizeOnlyFirstVista", false );
-	m_OptionsMap->setPropertyAs<bool>( "propagateZooming", false );
-	m_OptionsMap->setPropertyAs<uint16_t>( "interpolationType" , 0 );
-	m_OptionsMap->setPropertyAs<bool>( "showLables", false );
-	m_OptionsMap->setPropertyAs<bool>( "showCrosshair", true );
-	m_OptionsMap->setPropertyAs<uint16_t>( "minMaxSearchRadius", 20 );
-	m_OptionsMap->setPropertyAs<bool>( "showAdvancedFileDialogOptions", false );
-	m_OptionsMap->setPropertyAs<bool>( "showFavoriteFileList", false );
-	m_OptionsMap->setPropertyAs<uint16_t>( "maxWidgetHeight", 200 );
-	m_OptionsMap->setPropertyAs<uint16_t>( "maxWidgetWidth", 200 );
-	m_OptionsMap->setPropertyAs<uint16_t>( "maxOptionWidgetHeight", 90 );
-	m_OptionsMap->setPropertyAs<uint16_t>( "minOptionWidgetHeight", 90 );
-	m_OptionsMap->setPropertyAs<bool>( "showStartWidget", true );
-	m_OptionsMap->setPropertyAs<bool>( "showCrashMessage", true );
-	m_OptionsMap->setPropertyAs<uint16_t>( "startWidgetHeight", 600 );
-	m_OptionsMap->setPropertyAs<uint16_t>( "startWidgetWidth", 400 );
-	m_OptionsMap->setPropertyAs<uint16_t>( "viewerWidgetMargin", 5 );
-	//omp
-	m_OptionsMap->setPropertyAs<uint16_t>( "numberOfThreads", 0 );
-	m_OptionsMap->setPropertyAs<bool>( "ompAvailable", false );
-	m_OptionsMap->setPropertyAs<bool>( "enableMultithreading", false );
-	m_OptionsMap->setPropertyAs<uint16_t>( "initialMaxNumberThreads", 4 );
-	m_OptionsMap->setPropertyAs<bool>( "useAllAvailableThreads", false );
-	m_OptionsMap->setPropertyAs<uint16_t>( "maxNumberOfThreads", 1 );
-	//screenshot
-	m_OptionsMap->setPropertyAs<uint16_t>( "screenshotQuality", 70 );
-	m_OptionsMap->setPropertyAs<uint16_t>( "screenshotWidth", 700 );
-	m_OptionsMap->setPropertyAs<uint16_t>( "screenshotHeight", 700 );
-	m_OptionsMap->setPropertyAs<uint16_t>( "screenshotDPIX", 300 );
-	m_OptionsMap->setPropertyAs<uint16_t>( "screenshotDPIY", 300 );
-	m_OptionsMap->setPropertyAs<bool>( "screenshotManualScaling", false );
-	m_OptionsMap->setPropertyAs<bool>( "screenshotKeepAspectRatio", true );
-	//lut
-	m_OptionsMap->setPropertyAs<std::string>( "lutStructural", "standard_grey_values" );
-	m_OptionsMap->setPropertyAs<std::string>( "lutZMap", "standard_zmap" );
-	//misc
-	m_OptionsMap->setPropertyAs<uint16_t>( "timeseriesPlayDelayTime", 50 );
-	m_OptionsMap->setPropertyAs<bool>( "histogramOmitZero", true );
-	m_OptionsMap->setPropertyAs<uint16_t>("maxRecentOpenListSize", 10 );
-	//logging
-	m_OptionsMap->setPropertyAs<uint16_t>( "logDelayTime", 6000 );
-	m_OptionsMap->setPropertyAs<bool>( "showErrorMessages", true );
-	m_OptionsMap->setPropertyAs<bool>( "showNoticeMessages", true );
-	m_OptionsMap->setPropertyAs<bool>( "showWarningMessages", false );
-	m_OptionsMap->setPropertyAs<bool>( "showInfoMessages", false );
-	m_OptionsMap->setPropertyAs<bool>( "showVerboseInfoMessages", false );
-	m_OptionsMap->setPropertyAs<std::string>("vastSymbol", std::string(":/common/minerva-MPG.png") );
-
-	std::stringstream signature;
-	signature << "vast v" << getVersion() ;
-	m_OptionsMap->setPropertyAs<std::string>( "signature", signature.str() );
-        m_OptionsMap->setPropertyAs<std::string>( "copyright", "2012 Max Planck Institute for Human and Brain Science Leipzig");
+	const widget::WidgetLoader::WidgetMapType widgetMap = util::Singletons::get<widget::WidgetLoader, 10>().getWidgetMap();
+	return widgetMap.find( identifier ) != widgetMap.end();
 }
 
 
+widget::WidgetInterface *ViewerCoreBase::getWidget ( const std::string &identifier ) throw( std::runtime_error & )
+{
+	const widget::WidgetLoader::WidgetMapType widgetMap = util::Singletons::get<widget::WidgetLoader, 10>().getWidgetMap();
+
+	if( widgetMap.empty() ) {
+		LOG( Dev, error ) << "Could not find any widget!" ;
+	}
+
+	if( widgetMap.find( identifier ) != widgetMap.end() ) {
+		LOG( Dev, info ) << "Loading widget of identifier \"" << identifier << "\".";
+		return widgetMap.at( identifier )();
+	} else {
+		LOG( Dev, error ) << "Can not find any widget with identifier \"" << identifier
+						  << "\"! Returning first widget i can find.";
+		const std::string fallback = widgetMap.begin()->first;
+		getSettings()->setPropertyAs<std::string>( "defaultViewWidgetIdentifier", fallback );
+		getSettings()->save();
+		return getWidget( fallback );
+	}
+}
+
+
+const util::PropertyMap *ViewerCoreBase::getWidgetProperties ( const std::string &identifier )
+{
+	widget::WidgetLoader::WidgetPropertyMapType widgetPropertyMap = util::Singletons::get<widget::WidgetLoader, 10>().getWidgetPropertyMap();
+
+	if( widgetPropertyMap.empty() ) {
+		LOG( Dev, error ) << "Could not find any widget!" ;
+	}
+
+	if( widgetPropertyMap.find( identifier ) != widgetPropertyMap.end() ) {
+		LOG( Dev, info ) << "Loading widget properties of identifier \"" << identifier << "\".";
+		return widgetPropertyMap.at( identifier );
+	} else {
+		LOG( Dev, error ) << "Can not find any widget properties with identifier \"" << identifier
+						  << "\"! Returning properties of the first widget i can find.";
+		const std::string fallback = widgetPropertyMap.begin()->first;
+		getSettings()->setPropertyAs<std::string>( "defaultViewWidgetIdentifier", fallback );
+		getSettings()->save();
+		return getWidgetProperties( fallback );
+	}
+}
 
 }
 } // end namespace

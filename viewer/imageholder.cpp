@@ -16,7 +16,7 @@
  * along with this program; if not, write to the Free Software
  * Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA  02111-1307, USA.
  *
- * Author: Erik Türke, tuerke@cbs.mpg.de
+ * Author: Erik Tuerke, tuerke@cbs.mpg.de
  *
  * imageholder.cpp
  *
@@ -27,6 +27,8 @@
  ******************************************************************/
 #include "imageholder.hpp"
 #include "common.hpp"
+#include "memoryhandler.hpp"
+#include "nativeimageops.hpp"
 #include <numeric>
 
 namespace isis
@@ -34,46 +36,94 @@ namespace isis
 namespace viewer
 {
 
+namespace _internal
+{
+void __Image::mapPhysicalToIndex ( const float *physicalCoords, int32_t *index )
+{
+	float vec[3] = { physicalCoords[0] - m_Offset[0], physicalCoords[1] - m_Offset[1], physicalCoords[2] - m_Offset[2] };
+	index[0] = ( vec[0] * m_RowVecInv[0] + vec[1] * m_ColumnVecInv[0] + vec[2] * m_SliceVecInv[0] + 0.5 );
+	index[1] = ( vec[0] * m_RowVecInv[1] + vec[1] * m_ColumnVecInv[1] + vec[2] * m_SliceVecInv[1] + 0.5 );
+	index[2] = ( vec[0] * m_RowVecInv[2] + vec[1] * m_ColumnVecInv[2] + vec[2] * m_SliceVecInv[2] + 0.5 );
+
+}
+bool __Image::checkVoxel ( const int32_t *coords )
+{
+	if( ( coords[0] < 0 ) || ( coords[0] >= imageSize[0] ) ) return false;
+
+	if( ( coords[1] < 0 ) || ( coords[1] >= imageSize[1] ) ) return false;
+
+	if( ( coords[2] < 0 ) || ( coords[2] >= imageSize[2] ) ) return false;
+
+	return true;
+}
+
+}
+
 ImageHolder::ImageHolder()
-	: m_ZeroIsReserved( true ),
-	  m_ReservedValue( 0 )
+	:  m_AmbiguousOrientation( false )
 {}
 
-boost::numeric::ublas::matrix< double > ImageHolder::getNormalizedImageOrientation( bool transposed ) const
+boost::shared_ptr< const void > ImageHolder::getRawAdress ( size_t timestep ) const
 {
-	boost::numeric::ublas::matrix<double> retMatrix = boost::numeric::ublas::zero_matrix<double>( 4, 4 );
-	retMatrix( 3, 3 ) = 1;
-	const util::fvector4 &rowVec = m_Image->propertyValue( "rowVec" )->castTo<util::fvector4>();
-	const util::fvector4 &columnVec = m_Image->propertyValue( "columnVec" )->castTo<util::fvector4>();
-	const util::fvector4 &sliceVec = m_Image->propertyValue( "sliceVec" )->castTo<util::fvector4>();
+	if( getImageProperties().isRGB ) {
+		return m_VolumeVector.operator[]( timestep ).getValueArray<InternalImageColorType>().getRawAddress();
+	} else {
+		return m_VolumeVector.operator[]( timestep ).getValueArray<InternalImageType>().getRawAddress();
+	}
+}
+
+util::Matrix3x3<float> ImageHolder::calculateImageOrientation( bool transposed ) const
+{
+
+	util::Matrix3x3<float> retMatrix (  m_Image->getPropertyAs<util::fvector3>( "rowVec" ),
+										m_Image->getPropertyAs<util::fvector3>( "columnVec" ),
+										m_Image->getPropertyAs<util::fvector3>( "sliceVec" ) );
+
+	if( transposed ) {
+		return retMatrix;
+	}
+
+	return retMatrix.transpose(); // has to be transposed!!!!!!!!!!
+}
+
+util::Matrix3x3<float> ImageHolder::calculateLatchedImageOrientation( bool transposed )
+{
+	util::Matrix3x3<float> retMatrix;
+	retMatrix.fill( 0 );
+	const util::fvector3 &rowVec = m_Image->getPropertyAs<util::fvector3>( "rowVec" );
+	const util::fvector3 &columnVec = m_Image->getPropertyAs<util::fvector3>( "columnVec" );
+	const util::fvector3 &sliceVec = m_Image->getPropertyAs<util::fvector3>( "sliceVec" );
+
 	size_t rB = rowVec.getBiggestVecElemAbs();
 	size_t cB = columnVec.getBiggestVecElemAbs();
 	size_t sB = sliceVec.getBiggestVecElemAbs();
 
-	//if image is rotated of 45 °
+	//if image is rotated of 45 degrees
+	m_AmbiguousOrientation = ( rB == cB ) || ( rB == sB ) || ( cB == sB );
+
 	if( rB == cB ) {
 		if( sB == 0 ) {
 			rB = 1;
 			cB = 2;
 		} else if ( sB == 1 ) {
-			rB = 0;
-			cB = 2;
+			rB = 2;
+			cB = 0;
 		} else if ( sB == 2 ) {
 			rB = 0;
-			rB = 1;
+			cB = 1;
 		}
 	}
 
 	if( rB == sB ) {
 		if( cB == 0 ) {
-			rB = 1;
-			sB = 2;
-		} else if ( cB == 1 ) {
-			rB = 0;
-			sB = 2;
-		} else if ( cB == 2 ) {
-			rB = 0;
+			rB = 2;
 			sB = 1;
+		} else if ( cB == 1 ) {
+			rB = 2;
+			sB = 0;
+		} else if ( cB == 2 ) {
+			rB = 1;
+			sB = 0;
 		}
 	}
 
@@ -82,200 +132,141 @@ boost::numeric::ublas::matrix< double > ImageHolder::getNormalizedImageOrientati
 			cB = 1;
 			sB = 2;
 		} else if ( rB == 1 ) {
-			cB = 0;
-			sB = 2;
+			cB = 2;
+			sB = 0;
 		} else if ( rB == 2 ) {
-			cB = 0;
-			sB = 1;
+			cB = 1;
+			sB = 0;
 		}
 	}
 
-	if( !transposed ) {
-		retMatrix( rB, 0 ) = rowVec[rB] < 0 ? -1 : 1;
-		retMatrix( cB, 1 ) = columnVec[cB] < 0 ? -1 : 1;
-		retMatrix( sB, 2 ) =  sliceVec[sB] < 0 ? -1 : 1;
-	} else {
-		retMatrix( 0, rB ) = rowVec[rB] < 0 ? -1 : 1;
-		retMatrix( 1, cB ) =  columnVec[cB] < 0 ? -1 : 1;
-		retMatrix( 2, sB ) = sliceVec[sB] < 0 ? -1 : 1;
+	retMatrix.elem( 0, rB ) = rowVec[rB] < 0 ? -1 : 1;
+	retMatrix.elem( 1, cB ) =  columnVec[cB] < 0 ? -1 : 1;
+	retMatrix.elem( 2, sB ) = sliceVec[sB] < 0 ? -1 : 1;
+
+	if( transposed ) {
+		return retMatrix.transpose();
 	}
 
 	return retMatrix;
 }
 
-boost::numeric::ublas::matrix< double > ImageHolder::getImageOrientation( bool transposed ) const
+
+short unsigned int ImageHolder::getMajorTypeID() const
 {
-	boost::numeric::ublas::matrix<double> retMatrix = boost::numeric::ublas::zero_matrix<double>( 4, 4 );
-	retMatrix( 3, 3 ) = 1;
-	const util::fvector4 &rowVec = m_Image->propertyValue( "rowVec" )->castTo<util::fvector4>();
-	const util::fvector4 &columnVec = m_Image->propertyValue( "columnVec" )->castTo<util::fvector4>();
-	const util::fvector4 &sliceVec = m_Image->propertyValue( "sliceVec" )->castTo<util::fvector4>();
-
-	for ( uint16_t i = 0; i < 3; i++ ) {
-		if( !transposed ) {
-			retMatrix( i, 0 ) = rowVec[i];
-			retMatrix( i, 1 ) = columnVec[i];
-			retMatrix( i, 2 ) = sliceVec[i];
-		} else {
-			retMatrix( 0, i ) = rowVec[i];
-			retMatrix( 1, i ) = columnVec[i];
-			retMatrix( 2, i ) = sliceVec[i];
-		}
+	if( getImageProperties().minMax.first->getTypeID() == getImageProperties().minMax.second->getTypeID() ) { // ok min and max are the same type - trivial case
+		return getImageProperties().minMax.first->getTypeID() << 8; // btw: we do the shift, because min and max are Value - but we want the ID's ValuePtr
+	} else if( getImageProperties().minMax.first->fitsInto( getImageProperties().minMax.second->getTypeID() ) ) { // if min fits into the type of max, use that
+		return getImageProperties().minMax.second->getTypeID() << 8; //@todo maybe use a global static function here instead of a obscure shit operation
+	} else if( getImageProperties().minMax.second->fitsInto( getImageProperties().minMax.first->getTypeID() ) ) { // if max fits into the type of min, use that
+		return getImageProperties().minMax.first->getTypeID() << 8;
+	} else {
+		LOG( Runtime, error ) << "Sorry I dont know which datatype I should use. (" << getImageProperties().minMax.first->getTypeName()
+							  << " or " << getImageProperties().minMax.second->getTypeName() << ")";
+		std::stringstream o;
+		o << "Type selection failed. Range was: " << getImageProperties().minMax;
 	}
 
-	return retMatrix;
+	return 0;
+
 }
+
+void ImageHolder::collectImageInfo()
+{
+	getImageProperties().minMax = getISISImage()->getMinMax();
+	getImageProperties().majorTypeID = getMajorTypeID();
+	getImageProperties().isRGB = ( data::ValueArray<util::color24>::staticID == getImageProperties().majorTypeID || data::ValueArray<util::color48>::staticID == getImageProperties().majorTypeID );
+	getImageProperties().zeroIsReserved = getImageProperties().zeroIsReserved || (
+			getImageProperties().imageType == statistical_image && getImageProperties().minMax.first->as<double>() < 0 && !getImageProperties().isRGB );
+
+	if( !getImageProperties().isRGB ) {
+		getImageProperties().extent = fabs( getImageProperties().minMax.second->as<double>() - getImageProperties().minMax.first->as<double>() );
+		getImageProperties().scalingMinMax.first = getImageProperties().minMax.first->as<double>();
+		getImageProperties().scalingMinMax.second = getImageProperties().minMax.second->as<double>();
+	}
+
+	getImageProperties().majorTypeName = isis::util::getTypeMap( false, true ).at( getImageProperties().majorTypeID );
+	getImageProperties().majorTypeName = getImageProperties().majorTypeName.substr( 0, getImageProperties().majorTypeName.length() - 1 ).c_str();
+}
+
+
+boost::shared_ptr< _internal::__Image > ImageHolder::getISISImage() const
+{
+	return m_Image;
+}
+
 
 bool ImageHolder::setImage( const data::Image &image, const ImageType &_imageType, const std::string &filename )
 {
 	LOG( Dev, info ) << "setImage of " << filename;
+
 	//some checks
 	if( image.isEmpty() ) {
 		LOG( Runtime, error ) << "Getting an empty image? Obviously something went wrong.";
 		LOG( Dev, error ) << "Image " << filename << " is empty";
 		return false;
 	}
-
-	m_Image.reset( new data::Image( image ) );
-
-	//if no filename was specified we have to search for the filename by ourselfes
-	if( filename.empty() ) {
-		LOG( Dev, warning ) << "filename.empty() is true";
-		// go through all the chunks and search for filenames. We use a set here to avoid redundantly filenames
-		std::set<std::string> filenameSet;
-		BOOST_FOREACH( std::vector< data::Chunk >::const_reference chRef, image.copyChunksToVector() ) {
-			filenameSet.insert( chRef.getPropertyAs<std::string>( "source" ) );
-		}
-		//now we pack our filenameSet into our slist of filenames
-		BOOST_FOREACH( std::set<std::string>::const_reference setRef, filenameSet ) {
-			m_Filenames.push_back( setRef );
-		}
-		LOG( Dev, info ) << "Created filename: " << m_Filenames.front();
-	} else {
-		m_Filenames.push_back( filename );
-	}
-
+	getImageProperties().timestep = 0;
+	m_Image.reset( new _internal::__Image( image ) );
+	getImageProperties().filePath = filename;
+	getImageProperties().zeroIsReserved = false;
+	boost::filesystem::path p( filename );
+	getImageProperties().fileName = p.filename().string();
 	// get some image information
 	//add some more properties
-	imageType = _imageType;
-	interpolationType = nn;
-	majorTypeID = image.getMajorTypeID();
-	majorTypeName = image.getMajorTypeName();
-	majorTypeName = majorTypeName.substr( 0, majorTypeName.length() - 1 ).c_str();
+	getImageProperties().imageType = _imageType;
+	getImageProperties().interpolationType = nn;
 	m_ImageSize = image.getSizeAsVector();
 	LOG( Dev, verbose_info )  << "Fetched image of size " << m_ImageSize << " and type "
-								<< image.getMajorTypeName() << ".";
-	//copy the image into continuous memory space and assure consistent data type
-	isRGB = !(data::ValuePtr<util::color24>::staticID != majorTypeID && data::ValuePtr<util::color48>::staticID != majorTypeID);
-    const bool reserveZero = m_ZeroIsReserved && !isRGB && imageType == z_map;
-	if( !isRGB ) {
-		minMax = image.getMinMax();
-		copyImageToVector<InternalImageType>( image, reserveZero );
-	} else {
-		copyImageToVector<InternalImageColorType>( image, reserveZero );
-	}
-	
-	
-	LOG_IF( m_ImageVector.empty(), Dev, error ) << "Size of image vector is 0!";
+							  << image.getMajorTypeName() << ".";
 
-	if( m_ImageVector.size() != m_ImageSize[3] ) {
+	//copy the image into continuous memory space and assure consistent data type
+	synchronize( );
+
+	LOG_IF( m_VolumeVector.empty(), Dev, error ) << "Size of chunk vector is 0!";
+
+	if( m_VolumeVector.size() != m_ImageSize[3] ) {
 		LOG( Dev, error ) << "The number of timesteps (" << m_ImageSize[3]
-							  << ") does not coincide with the number of volumes ("  << m_ImageVector.size() << ").";
+						  << ") does not coincide with the number of volumes ("  << m_VolumeVector.size() << ").";
 		return false;
 	}
 
-	//create the chunk vector
-	BOOST_FOREACH( std::vector< ImagePointerType >::const_reference pointerRef, m_ImageVector ) {
-		m_ChunkVector.push_back( data::Chunk(  pointerRef, m_ImageSize[0], m_ImageSize[1], m_ImageSize[2] ) );
-	}
-
-	// if m_ZeroIsReserved is set we reserve a value (m_ReservedValue) in the internal image that indicates the true zero value in the origin image
-	if( reserveZero ) {
-		switch ( majorTypeID ) {
-		case data::ValuePtr<bool>::staticID:
-			_setTrueZero<bool>( image );
-			break;
-		case data::ValuePtr<int8_t>::staticID:
-			_setTrueZero<int8_t>( image );
-			break;
-		case data::ValuePtr<uint8_t>::staticID:
-			_setTrueZero<uint8_t>( image );
-			break;
-		case data::ValuePtr<int16_t>::staticID:
-			_setTrueZero<int16_t>( image );
-			break;
-		case data::ValuePtr<uint16_t>::staticID:
-			_setTrueZero<uint16_t>( image );
-			break;
-		case data::ValuePtr<int32_t>::staticID:
-			_setTrueZero<int32_t>( image );
-			break;
-		case data::ValuePtr<uint32_t>::staticID:
-			_setTrueZero<uint32_t>( image );
-			break;
-		case data::ValuePtr<int64_t>::staticID:
-			_setTrueZero<int64_t>( image );
-			break;
-		case data::ValuePtr<uint64_t>::staticID:
-			_setTrueZero<uint64_t>( image );
-			break;
-		case data::ValuePtr<float>::staticID:
-			_setTrueZero<float>( image );
-			break;
-		case data::ValuePtr<double>::staticID:
-			_setTrueZero<double>( image );
-			break;
-		}
-	}
-	LOG( Dev, verbose_info ) << "Spliced image to " << m_ImageVector.size() << " volumes.";
+	LOG( Dev, verbose_info ) << "Spliced image to " << m_VolumeVector.size() << " volumes.";
 
 	//image seems to be ok...i guess
 
 
 
-	if( imageType == z_map ) {
-		lowerThreshold = 0;
-		upperThreshold = 0;
-		lut = std::string( "standard_zmap" );
-	} else if( imageType == structural_image ) {
-		if( !isRGB ) {
-			lowerThreshold = minMax.first->as<double>() ;
-			lowerThreshold = minMax.second->as<double>();
+	if( getImageProperties().imageType == statistical_image ) {
+		getImageProperties().lowerThreshold = 0;
+		getImageProperties().upperThreshold = 0;
+		getImageProperties().lut = std::string( "standard_zmap" );
+	} else if( getImageProperties().imageType == structural_image ) {
+		if( !getImageProperties().isRGB ) {
+			getImageProperties().lowerThreshold = getImageProperties().minMax.first->as<double>() ;
+			getImageProperties().lowerThreshold = getImageProperties().minMax.second->as<double>();
 		}
 
-		lut = std::string( "standard_grey_values" );
+		getImageProperties().lut = std::string( "standard_grey_values" );
 	}
 
-	voxelSize = image.getPropertyAs<util::fvector4>( "voxelSize" );
+	getImageProperties().isVisible = true;
+	getImageProperties().opacity = 1.0;
+	getImageProperties().scaling = 1.0;
+	getImageProperties().offset = 0.0;
+	getImageProperties().colorMap = util::Singletons::get<color::Color, 10>().getColormapMap().at( getImageProperties().lut );
 
-	if( image.hasProperty( "voxelGap" ) ) {
-		voxelSize += image.getPropertyAs<util::fvector4>( "voxelGap" );
-	}
-
-
-	voxelCoords = util::ivector4( m_ImageSize[0] / 2, m_ImageSize[1] / 2, m_ImageSize[2] / 2, 0 );
-	physicalCoords = m_Image->getPhysicalCoordsFromIndex( voxelCoords );
-	isVisible = true;
-	opacity = 1.0;
-	scaling = 1.0;
-	offset = 0.0;
-	colorMap = util::Singletons::get<color::Color, 10>().getColormapMap().at( lut );
-
-	if( !isRGB ) {
-		extent = fabs( minMax.second->as<double>() - minMax.first->as<double>() );
-        updateHistogram();
-		m_PropMap.setPropertyAs<double>( "scalingMinValue", minMax.first->as<double>() );
-		m_PropMap.setPropertyAs<double>( "scalingMaxValue", minMax.second->as<double>() );
-	}
-
-	alignedSize32 = get32BitAlignedSize( m_ImageSize );
+	getImageProperties().alphaMap.resize( 256 );
+	getImageProperties().alignedSize32 = MemoryHandler::get32BitAlignedSize( m_ImageSize );
 	m_PropMap.setPropertyAs<bool>( "init", true );
 	m_PropMap.setPropertyAs<util::slist>( "changedAttributes", util::slist() );
 	updateOrientation();
-	m_PropMap.setPropertyAs<util::fvector4>( "originalColumnVec", image.getPropertyAs<util::fvector4>( "columnVec" ) );
-	m_PropMap.setPropertyAs<util::fvector4>( "originalRowVec", image.getPropertyAs<util::fvector4>( "rowVec" ) );
-	m_PropMap.setPropertyAs<util::fvector4>( "originalSliceVec", image.getPropertyAs<util::fvector4>( "sliceVec" ) );
-	m_PropMap.setPropertyAs<util::fvector4>( "originalIndexOrigin", image.getPropertyAs<util::fvector4>( "indexOrigin" ) );
+	getImageProperties().voxelCoords = util::ivector4( m_ImageSize[0] / 2, m_ImageSize[1] / 2, m_ImageSize[2] / 2, 0 );
+	getImageProperties().physicalCoords = m_Image->getPhysicalCoordsFromIndex( getImageProperties().voxelCoords );
+	m_PropMap.setPropertyAs<util::fvector3>( "originalColumnVec", image.getPropertyAs<util::fvector3>( "columnVec" ) );
+	m_PropMap.setPropertyAs<util::fvector3>( "originalRowVec", image.getPropertyAs<util::fvector3>( "rowVec" ) );
+	m_PropMap.setPropertyAs<util::fvector3>( "originalSliceVec", image.getPropertyAs<util::fvector3>( "sliceVec" ) );
+	m_PropMap.setPropertyAs<util::fvector3>( "originalIndexOrigin", image.getPropertyAs<util::fvector3>( "indexOrigin" ) );
 	updateColorMap();
 	logImageProps();
 	return true;
@@ -302,80 +293,39 @@ bool ImageHolder::removeChangedAttribute( const std::string &attribute )
 	}
 }
 
-void ImageHolder::updateHistogram()
-{
-	const size_t volume = getImageSize()[0] * getImageSize()[1] * getImageSize()[2];
-	const double extent = getInternalExtent();
-
-	boost::scoped_array<double> nHistogram ( new double[( size_t )extent + 1] );
-
-	histogramVector.resize( getImageSize()[3] );
-	histogramVectorWOZero.resize( getImageSize()[3] );
-
-	for( unsigned short t = 0; t < getImageSize()[3]; t++ ) {
-		histogramVector[t] = ( double * ) calloc( extent + 1, sizeof( double ) ) ;
-		histogramVectorWOZero[t] = ( double * ) calloc( extent, sizeof( double ) );
-		const InternalImageType *dataPtr = static_cast<InternalImageType *>( getImageVector()[t]->getRawAddress().get() );
-
-		//create the histogram
-		//      #pragma omp parallel for
-		for( size_t i = 0; i < volume; i++ ) {
-			histogramVector[t][dataPtr[i]]++;
-		}
-
-		//      #pragma omp parallel for
-		for( size_t i = 0; i < volume; i++ ) {
-			if( dataPtr[i] > 0 ) {
-				histogramVectorWOZero[t][dataPtr[i] - 1]++;
-			}
-		}
-	}
-}
-
-
 
 ///calls isis::data::Image::updateOrientationMatrices() and sets latchedOrientation and orientation of the isis::viewer::ImageHolder
 void ImageHolder::updateOrientation()
 {
 	m_Image->updateOrientationMatrices();
-	latchedOrientation = getNormalizedImageOrientation();
-	orientation = getImageOrientation();
-	indexOrigin = getISISImage()->getPropertyAs<util::fvector4>("indexOrigin");
-	rowVec = getISISImage()->getPropertyAs<util::fvector4>("rowVec");
-	columnVec = getISISImage()->getPropertyAs<util::fvector4>("columnVec");
-	sliveVec = getISISImage()->getPropertyAs<util::fvector4>("sliveVec");
+	getImageProperties().latchedOrientation = calculateLatchedImageOrientation();
+	getImageProperties().orientation = calculateImageOrientation();
+	getImageProperties().indexOrigin = getISISImage()->getPropertyAs<util::fvector3>( "indexOrigin" );
+	getImageProperties().rowVec = getISISImage()->getPropertyAs<util::fvector3>( "rowVec" );
+	getImageProperties().columnVec = getISISImage()->getPropertyAs<util::fvector3>( "columnVec" );
+	getImageProperties().sliceVec = getISISImage()->getPropertyAs<util::fvector3>( "sliceVec" );
+	m_ImageProperties.voxelSize = getISISImage()->getPropertyAs<util::fvector3>( "voxelSize" );
 
-}
-
-void ImageHolder::checkVoxelCoords( util::ivector4 &vc )
-{
-	for( unsigned short i = 0; i < 4; i++ ) {
-		vc[i] = vc[i] < 0 ? 0 : vc[i];
-		vc[i] = vc[i] >= static_cast<int>( getImageSize()[i] ) ? static_cast<int>( getImageSize()[i] ) - 1 : vc[i]; //cast to avoid warning
-
+	if( getISISImage()->hasProperty( "voxelGap" ) ) {
+		getImageProperties().voxelSize += getISISImage()->getPropertyAs<util::fvector3>( "voxelGap" );
 	}
+
+	m_ImageProperties.boundingBox = geometrical::getPhysicalBoundingBox( ImageHolder::Pointer( new ImageHolder( *this ) ) );
 }
+
 
 void ImageHolder::updateColorMap()
 {
-	if( !isRGB ) {
+	if( !getImageProperties().isRGB ) {
+		getImageProperties().alphaMap.fill( 1 );
 		util::Singletons::get<color::Color, 10>().adaptColorMapToImage( this );
-	}
-}
-
-void ImageHolder::removeWidget( WidgetInterface *widget )
-{
-	std::list<WidgetInterface *>::iterator iter = std::find( m_WidgetList.begin(), m_WidgetList.end(), widget );
-
-	if( iter != m_WidgetList.end() ) {
-		m_WidgetList.erase( iter );
 	}
 }
 
 
 double ImageHolder::getInternalExtent() const
 {
-	if( m_ZeroIsReserved ) {
+	if( getImageProperties().zeroIsReserved ) {
 		return std::numeric_limits<InternalImageType>::max() - std::numeric_limits<InternalImageType>::min();
 	} else {
 		return std::numeric_limits<InternalImageType>::max() - std::numeric_limits<InternalImageType>::min() + 1;
@@ -384,55 +334,92 @@ double ImageHolder::getInternalExtent() const
 
 void ImageHolder::logImageProps() const
 {
-	LOG( Dev, info ) << "The following image properties are for: " << getFileNames().front();
-	LOG( Dev, info ) << "majorTypeID: " << majorTypeID;
-	
+	LOG( Dev, info ) << "The following image properties are for: " << getImageProperties().fileName;
+	LOG( Dev, info ) << "majorTypeID: " << getImageProperties().majorTypeID;
+
 }
 
-void ImageHolder::setVoxel ( const size_t& first, const size_t& second, const size_t& third, const size_t& fourth, const double& value, bool sync )
+void ImageHolder::setVoxel ( const size_t &first, const size_t &second, const size_t &third, const size_t &fourth, const double &value, bool sync )
 {
 	data::Chunk chunk = getISISImage()->getChunk( first, second, third, fourth, false );
-	getChunkVector()[fourth].voxel<InternalImageType>( first, second, third ) = scalingToInternalType.second->as<double>() + value * scalingToInternalType.first->as<double>();
+	getVolumeVector()[fourth].voxel<InternalImageType>( first, second, third )
+	= getImageProperties().scalingToInternalType.second->as<double>() + value * getImageProperties().scalingToInternalType.first->as<double>();
+
 	if( sync ) {
 		switch( chunk.getTypeID() ) {
-			case data::ValuePtr<bool>::staticID:
-				chunk.voxel<bool>(first, second, third, fourth) = static_cast<bool>( value );
-				break;
-			case data::ValuePtr<uint8_t>::staticID:
-				chunk.voxel<uint8_t>(first, second, third, fourth) = static_cast<uint8_t>( value );
-				break;
-			case data::ValuePtr<int8_t>::staticID:
-				chunk.voxel<int8_t>(first, second, third, fourth) = static_cast<int8_t>( value );
-				break;
-			case data::ValuePtr<uint16_t>::staticID:
-				chunk.voxel<uint16_t>(first, second, third, fourth) = static_cast<uint16_t>( value );
-				break;
-			case data::ValuePtr<int16_t>::staticID:
-				chunk.voxel<int16_t>(first, second, third, fourth) = static_cast<int16_t>( value );
-				break;
-			case data::ValuePtr<uint32_t>::staticID:
-				chunk.voxel<uint32_t>(first, second, third, fourth) = static_cast<uint32_t>( value );
-				break;
-			case data::ValuePtr<int32_t>::staticID:
-				chunk.voxel<int32_t>(first, second, third, fourth) = static_cast<int32_t>( value );
-				break;
-			case data::ValuePtr<uint64_t>::staticID:
-				chunk.voxel<uint64_t>(first, second, third, fourth) = static_cast<uint64_t>( value );
-				break;
-			case data::ValuePtr<int64_t>::staticID:
-				chunk.voxel<int64_t>(first, second, third, fourth) = static_cast<int64_t>( value );
-				break;
-			case data::ValuePtr<float>::staticID:
-				chunk.voxel<float>(first, second, third, fourth) = static_cast<float>( value );
-				break;
-			case data::ValuePtr<double>::staticID:
-				chunk.voxel<double>(first, second, third, fourth) = static_cast<double>( value );
-				break;
-			default:
-				LOG( Runtime, error ) << "Tried to set voxel of chunk with type " << chunk.getTypeName() << " to double";
-				LOG( Dev, error ) << "ImageHolder::setVoxel with type " << chunk.getTypeName();
-
+		case data::ValueArray<bool>::staticID:
+			chunk.voxel<bool>( first, second, third, fourth ) = static_cast<bool>( value );
+			break;
+		case data::ValueArray<uint8_t>::staticID:
+			chunk.voxel<uint8_t>( first, second, third, fourth ) = static_cast<uint8_t>( value );
+			break;
+		case data::ValueArray<int8_t>::staticID:
+			chunk.voxel<int8_t>( first, second, third, fourth ) = static_cast<int8_t>( value );
+			break;
+		case data::ValueArray<uint16_t>::staticID:
+			chunk.voxel<uint16_t>( first, second, third, fourth ) = static_cast<uint16_t>( value );
+			break;
+		case data::ValueArray<int16_t>::staticID:
+			chunk.voxel<int16_t>( first, second, third, fourth ) = static_cast<int16_t>( value );
+			break;
+		case data::ValueArray<uint32_t>::staticID:
+			chunk.voxel<uint32_t>( first, second, third, fourth ) = static_cast<uint32_t>( value );
+			break;
+		case data::ValueArray<int32_t>::staticID:
+			chunk.voxel<int32_t>( first, second, third, fourth ) = static_cast<int32_t>( value );
+			break;
+		case data::ValueArray<uint64_t>::staticID:
+			chunk.voxel<uint64_t>( first, second, third, fourth ) = static_cast<uint64_t>( value );
+			break;
+		case data::ValueArray<int64_t>::staticID:
+			chunk.voxel<int64_t>( first, second, third, fourth ) = static_cast<int64_t>( value );
+			break;
+		case data::ValueArray<float>::staticID:
+			chunk.voxel<float>( first, second, third, fourth ) = static_cast<float>( value );
+			break;
+		case data::ValueArray<double>::staticID:
+			chunk.voxel<double>( first, second, third, fourth ) = static_cast<double>( value );
+			break;
+		default:
+			LOG( Runtime, error ) << "Tried to set voxel of chunk with type " << chunk.getTypeName() << " to double";
+			LOG( Dev, error ) << "ImageHolder::setVoxel with type " << chunk.getTypeName();
 		}
+	}
+}
+
+
+void ImageHolder::synchronize ()
+{
+	collectImageInfo();
+
+	if( getImageProperties().isRGB ) {
+		copyImageToVector<InternalImageColorType>( *getISISImage() );
+	} else {
+		copyImageToVector<InternalImageType>( *getISISImage() );
+	}
+}
+
+void ImageHolder::phyisicalCoordsChanged ( const util::fvector3 &physicalCoords )
+{
+	getImageProperties().physicalCoords = physicalCoords;
+	getImageProperties().trueVoxelCoords = getISISImage()->getIndexFromPhysicalCoords( physicalCoords );
+	util::ivector4 correctedVoxelCoords =  getImageProperties().trueVoxelCoords;
+	correctVoxelCoords<4>( correctedVoxelCoords );
+	getImageProperties().voxelCoords = correctedVoxelCoords;
+}
+
+void ImageHolder::voxelCoordsChanged ( const util::ivector4 &voxelCoords )
+{
+	getImageProperties().voxelCoords = voxelCoords;
+	getImageProperties().physicalCoords = getISISImage()->getPhysicalCoordsFromIndex( voxelCoords );
+}
+
+void ImageHolder::timestepChanged ( const size_t &timestep )
+{
+	getImageProperties().timestep = timestep;
+
+	if( getImageProperties().timestep >= getISISImage()->getSizeAsVector()[3] ) {
+		getImageProperties().timestep = getISISImage()->getSizeAsVector()[3] - 1;
 	}
 }
 

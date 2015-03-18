@@ -16,7 +16,7 @@
  * along with this program; if not, write to the Free Software
  * Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA  02111-1307, USA.
  *
- * Author: Erik Türke, tuerke@cbs.mpg.de
+ * Author: Erik Tuerke, tuerke@cbs.mpg.de
  *
  * color.cpp
  *
@@ -27,7 +27,6 @@
  ******************************************************************/
 #include "color.hpp"
 #include "imageholder.hpp"
-#include "common.hpp"
 #include <QResource>
 #include <QFile>
 #include <fstream>
@@ -109,8 +108,9 @@ bool Color::addColormap( const std::string &path, const boost::regex &separator 
 		} else if ( lutTyp == std::string( "hsla" ) ) {
 			lutVec.push_back( QColor::fromHsl( colorVec[0], colorVec[1], colorVec[2], colorVec[3] ).rgba() );
 		}
+
 #else
-	LOG( Dev, info ) << "QT_VERSION < 0x040600 QColor::fromHsl is not supported";
+		LOG( Dev, info ) << "QT_VERSION < 0x040600 QColor::fromHsl is not supported";
 #endif
 		else {
 			LOG( Runtime, warning ) << "Unknown lut type " << lutTyp << " !";
@@ -146,7 +146,7 @@ QIcon Color::getIcon( const std::string &colormapName, size_t w, size_t h, icon_
 		break;
 	case lower_half:
 		start = 0;
-		end = 128;
+		end = 127;
 		break;
 	case upper_half:
 		start = 128;
@@ -174,7 +174,7 @@ QIcon Color::getIcon( const std::string &colormapName, size_t w, size_t h, icon_
 	}
 
 	QPixmap pixmap( QPixmap::fromImage( tmpImage ) );
-	LOG(Dev, verbose_info) << "Created Icon " << colormapName;
+	LOG( Dev, verbose_info ) << "Created Icon " << colormapName;
 	return QIcon( pixmap.scaled( w, h ) );
 }
 
@@ -189,6 +189,7 @@ bool Color::hasColormap( const std::string &name ) const
 Color::ColormapType Color::getFallbackColormap() const
 {
 	ColormapType retColormap;
+
 	for ( unsigned short i = 0; i < 256; i++ ) {
 		retColormap.push_back( QColor( i, i, i, 255 ).rgba() );
 	}
@@ -197,82 +198,94 @@ Color::ColormapType Color::getFallbackColormap() const
 }
 
 
-void Color::adaptColorMapToImage( ImageHolder *image, bool split )
+void Color::adaptColorMapToImage( ImageHolder *image )
 {
-	LOG_IF( image->colorMap.size() != 256, Runtime, error ) << "The colormap is of size "
-			<< image->colorMap.size() << " but has to be of size " << 256 << "!";
+	LOG_IF( image->getImageProperties().colorMap.size() != 256, Runtime, error ) << "The colormap is of size "
+			<< image->getImageProperties().colorMap.size() << " but has to be of size " << 256 << "!";
 	ColormapType retMap ;
 	retMap.resize( 256 );
-	ColormapType tmpMap = util::Singletons::get<Color, 10>().getColormapMap().at( image->lut );
-	const double extent = image->extent;
-	const double min = image->minMax.first->as<double>();
-	const double max = image->minMax.second->as<double>();
-	const double lowerThreshold = image->lowerThreshold;
-	const double upperThreshold = image->upperThreshold;
-	const double offset = image->offset;
-	const double scaling = image->scaling;
+	ColormapType tmpMap = util::Singletons::get<Color, 10>().getColormapMap().at( image->getImageProperties().lut );
+	const double extent = image->getImageProperties().extent;
+	const double min = image->getImageProperties().minMax.first->as<double>();
+	const double max = image->getImageProperties().minMax.second->as<double>();
+	const double offset = image->getImageProperties().offset;
+	const double scaling = image->getImageProperties().scaling;
 	const double norm = 256.0 / extent;
-	const unsigned short mid = norm * fabs( min );
-	unsigned short scaledVal;
-	const float normMid = mid + (offset * norm );
+
+	short scaledVal;
+
 	for ( unsigned short i = 0; i < 256; i++ ) {
-		if( i > normMid ) {
-			scaledVal = normMid + ( i - normMid ) * scaling > 255 ? 255 : normMid + ( i - normMid ) * scaling;
-		} else {
-			scaledVal = normMid - ( normMid * scaling ) + i * scaling < 0 ? 0 : normMid - ( normMid * scaling ) + i * scaling;
-		}
+		scaledVal = scaling * ( i - ( offset * norm ) );
+
+		if( scaledVal < 0 ) scaledVal = 0;
+
+		if( scaledVal > 255 ) scaledVal = 255;
+
 		retMap[i] = tmpMap[scaledVal];
 	}
 
-	ColormapType negVec( mid );
-	ColormapType posVec( 256 - mid );
+	retMap[0] = QColor( 0, 0, 0, 0 ).rgba();
+	image->getImageProperties().alphaMap[0] = 0;
 
 	//only stuff necessary for colormaps
-	if( image->imageType == ImageHolder::z_map ) {
+	if( image->getImageProperties().imageType == ImageHolder::statistical_image ) {
 
-		if( split ) {
-			assert( negVec.size() + posVec.size() == 256 );
+		unsigned short mid = ( norm * fabs( min ) );
+		ColormapType negVec( mid );
+		AlphamapType negAlphas( mid );
+		ColormapType posVec( 256-mid );
+		AlphamapType posAlphas( 256-mid );
+		const double lowerThreshold = image->getImageProperties().lowerThreshold;
+		const double upperThreshold = image->getImageProperties().upperThreshold;
 
-			//fill negVec
-			if( min < 0 ) {
-				const double scaleMin = 1 - fabs( lowerThreshold / min );
-				const double normMin = 128.0 / mid;
+		double imageScale=1;
 
-				for ( unsigned short i = 0; i < mid; i++ ) {
-					negVec[i * scaleMin] = retMap[i * normMin];
-				}
-			}
-
-			if( max > 0 ) {
-				const double normMax = 128.0 / ( 256 - mid );
-				const double scaleMax = fabs( upperThreshold / max );
-				const double offset = ( 256 - mid ) * scaleMax;
-
-				for( unsigned short i = 0; i < ( 256 - mid ); i++ ) {
-					posVec[( i * ( 1 - scaleMax ) + offset )] = retMap[128 + i * normMax];
-				}
-			}
-
-			retMap = negVec << posVec;
-		}
-	}
-
-	if( image->imageType == ImageHolder::z_map ) {
-		ColormapType zmapLUT;
-		zmapLUT.resize( 256 );
-
-		for( unsigned short i = 0; i < 255; i++ ) {
-			zmapLUT[i + 1] = retMap[i * ( 256.0 / 255.0 )];
+		switch(image->getImageProperties().majorTypeID)
+		{
+			case data::ValueArray<float>::staticID:
+			case data::ValueArray<double>::staticID:
+			break;
+			default:
+				if(extent<256)
+					imageScale=128/extent;
+			break;
 		}
 
-		//kill the zero value
-		zmapLUT[0] = QColor( 0, 0, 0, 0 ).rgba();
-		image->colorMap = zmapLUT;
-	} else {
-		retMap[0] = QColor( 0, 0, 0, 0 ).rgba();
-		image->colorMap = retMap;
-	}
+		
+		//fill negVec
+		if( min < 0 ) {
+			//where the negative colormap should end (index for "lowest" color) / rest until mid will be black
+			const double negMapEnd = (1 - lowerThreshold / min) * mid; // lowerThreshold < min => (1 - lowerThreshold / min) < 1 => negMapEnd < mid
+			for(unsigned short i=1;i<negMapEnd;i++){ //first entry in the colormap is reserved for background
+				int scaledVal = i/(scaling*imageScale);
+				
+				if( scaledVal < 1 ) scaledVal = 1;
+				if( scaledVal > 127 ) scaledVal = 127;
+				
+				negVec[i]=tmpMap[scaledVal];
+				negAlphas[i] = 1;
+			}
+		}
 
+		if( max > 0 ) {
+			//where the positive colormap should start (index for "lowest" color) / rest from 128 will be black
+			const double posMapStart = (upperThreshold / max) * (256-mid); // lowerThreshold < min => (1 - lowerThreshold / min) < 1 => negMapEnd < mid
+			for(unsigned short i=std::max<unsigned short>(1,posMapStart);i<(256-mid-1);i++){ //first entry in the colormap is reserved for background
+				int scaledVal = i*scaling*imageScale+128;
+				
+				if( scaledVal <= 128 ) scaledVal = 128;
+				if( scaledVal >= 256 ) scaledVal = 255;
+				
+				posVec[i]=tmpMap[scaledVal];
+				posAlphas[i] = 1;
+			}
+		}
+
+		retMap = negVec << posVec;
+		image->getImageProperties().alphaMap = negAlphas << posAlphas;
+
+	}
+	image->getImageProperties().colorMap = retMap;
 }
 
 
